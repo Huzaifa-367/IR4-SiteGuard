@@ -108,13 +108,20 @@ Site: North Tower
 
 `detection_modules` — **read-only catalog** of what Python can run (not created by end users):
 
-| `key` | Name |
-|-------|------|
-| `ppe` | PPE compliance |
-| `vehicle_proximity` | Vehicle & pedestrian |
-| `working_at_height` | Work at height |
+| `key` | Name | Ingest |
+|-------|------|--------|
+| `ppe` | PPE compliance | `/api/ingest/camera` |
+| `vehicle_proximity` | Vehicle & pedestrian | `/api/ingest/camera` |
+| `working_at_height` | Work at height | `/api/ingest/camera` |
+| `incident_vision` | Fall / worker down | `/api/ingest/camera` |
+| `rfid_ssms` | RFID personnel tracking | `/api/ingest/rfid` |
+| `gas_monitoring` | 4-gas detectors | `/api/ingest/gas` |
+| `environmental` | CO₂, weather, air quality | `/api/ingest/sensor` |
+| `qr_equipment` | Equipment QR registry | Dashboard CRUD + public scan |
+| `hse_incidents` | HSE incident workflow | Alerts + forms |
+| `lsr` | Life Saving Rules | Alerts + manual log |
 
-New module types in future = migration + Python worker — not dashboard CRUD.
+Vision module types = migration + Python worker. IoT modules = migration + edge agent — [12](12-iot-ingestion-and-edge.md). Enable per site via `site_detection_modules` (same pattern).
 
 ### 4.2 Per-site module configuration (dynamic)
 

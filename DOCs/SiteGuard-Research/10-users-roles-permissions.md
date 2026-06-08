@@ -133,6 +133,10 @@ On first install, seed **suggested** dynamic roles users may edit or delete:
 | HSE Manager | `sites.view`, `sites.update`, `modules.configure`, `cameras.*`, `zones.manage`, `rules.manage`, `alerts.*`, `investigations.manage`, `reports.export`, `ai.assistant.use` |
 | Site Supervisor | `sites.view`, `cameras.view`, `cameras.update`, `zones.manage`, `alerts.view`, `alerts.acknowledge`, `investigations.manage` |
 | Viewer | `sites.view`, `cameras.view`, `alerts.view`, `reports.export` |
+| **SCC Operator** (IR4) | `alerts.*`, `rfid.view`, `gas.view`, `environmental.view`, `cameras.view`, `lsr.actions_update`, `hse_incidents.view` |
+| **Safety Manager** (IR4) | SCC Operator + `workers.manage`, `hse_incidents.classify`, `udpm.approve`, `equipment.manage` |
+| **Project Manager** (IR4) | `udpm.view`, `rfid.view`, `reports.export` — read-only |
+| **SA Representative** (IR4) | View-only subset + `is_sa_readonly` |
 
 These are **normal** `roles` rows (`is_system = false`) — operators may rename, change permissions, or delete them.
 
@@ -213,6 +217,53 @@ Requires `settings.ai_enabled = true` globally.
 | `api_tokens.manage` | Python ingest tokens |
 | `settings.manage` | Global retention, notifications, `ai_enabled` |
 | `integrations.manage` | Webhooks, API keys for site provisioning |
+
+### 6.7 RFID & workers
+
+| Permission | Allows |
+|------------|--------|
+| `rfid.view` | RFID map, headcount (aggregated) |
+| `rfid_zones.manage` | Zones, readers, geofence rules |
+| `workers.view` | Worker names, gate log |
+| `workers.manage` | CRUD workers, tags, device approval |
+| `gate_log.view` | Entry/exit audit |
+| `evacuation.generate` | Evacuation report |
+| `portable_devices.manage` | Device approval register |
+
+### 6.8 Gas, environmental, equipment
+
+| Permission | Allows |
+|------------|--------|
+| `gas.view` | Live gas dashboard |
+| `gas_thresholds.manage` | Site gas limits |
+| `environmental.view` | CO₂ + weather dashboards |
+| `sensors.manage` | Sensor devices, Modbus maps |
+| `equipment.view` | Equipment registry |
+| `equipment.manage` | CRUD, inspections, maintenance |
+| `equipment.print` | Zebra label print |
+
+### 6.9 HSE, LSR, UDPM
+
+| Permission | Allows |
+|------------|--------|
+| `hse_incidents.view` | Incident list |
+| `hse_incidents.classify` | Classification form |
+| `lsr.view` | LSR log |
+| `lsr.log_manual` | Manual LSR entry |
+| `lsr.actions_update` | Add actions_taken |
+| `vehicle_violations.log` | UDPM §vii manual |
+| `udpm.view` | Report preview/history |
+| `udpm.generate` | Regenerate report |
+| `udpm.approve` | Approve weekly report |
+| `udpm.export` | PDF/CSV download |
+
+### 6.10 SA representative constraint
+
+Role flag `is_sa_readonly = true` (column on `roles`):
+
+- Grants view permissions only  
+- **Denies** `reports.export`, `udpm.export`, bulk media download  
+- All page views logged to `security_audit_log`
 
 ---
 

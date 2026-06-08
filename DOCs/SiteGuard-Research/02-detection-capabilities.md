@@ -2,7 +2,11 @@
 
 [← Index](README.md) · **Next:** [03 Sites, modules & cameras](03-sites-modules-cameras.md)
 
-Three **detection modules** (`ppe`, `vehicle_proximity`, `working_at_height`) share one Laravel install. Each site enables modules independently; **each module has many cameras** (locations/angles). Python **POSTs per camera** — one token, one `camera_id`, minimal `payload` + snapshot — [06](06-ai-ingestion-api.md). See [03](03-sites-modules-cameras.md).
+**Vision detection modules** (`ppe`, `vehicle_proximity`, `working_at_height`, `incident_vision`) share one Laravel install. Each site enables modules independently; **each module has many cameras** (locations/angles). Python/Jetson **POSTs per camera** — one token, one `camera_id`, minimal `payload` + snapshot — [06](06-ai-ingestion-api.md).
+
+**Non-vision safety** (RFID, gas, CO₂, environmental) uses separate ingest APIs — [12](12-iot-ingestion-and-edge.md). **PPE alerts are anonymous**; worker identity is RFID-only — [13](13-rfid-ssms.md) · [09](09-risks-compliance-vision.md).
+
+See [03](03-sites-modules-cameras.md).
 
 ---
 
@@ -36,8 +40,12 @@ Three **detection modules** (`ppe`, `vehicle_proximity`, `working_at_height`) sh
 | `boots` | Optional — often hard at distance |
 | `safety_glasses` | Optional |
 | `ear_protection` | Optional |
+| `face_mask` | Face mask / respirator visible |
+| `no_face_mask` | Face visible, no mask — **IR4 required** |
 
 Site config enables which classes are **mandatory** per zone.
+
+**IR4 mandatory PPE set:** helmet, vest, harness (in height zones), face mask (where policy requires).
 
 ### 2.2 Typical rules
 
@@ -47,6 +55,7 @@ Site config enables which classes are **mandatory** per zone.
 | `PPE-002` | `no_vest` in `machinery_yard` zone | **high** |
 | `PPE-003` | `person` in zone without any mandatory PPE satisfied | **high** |
 | `PPE-004` | Group ≥3 with same violation (cluster) | **medium** |
+| `PPE-005` | `no_face_mask` in `mask_required` zone | **high** |
 
 ### 2.3 False positive mitigations
 
@@ -151,17 +160,52 @@ Height-from-single-camera is **error-prone**; prefer:
 
 ---
 
-## 5. Cross-domain scenarios
+## 5. Fall & incapacitation (`incident_vision` module)
+
+### 5.1 Detectable classes
+
+| Class key | Description |
+|-----------|-------------|
+| `fall_detected` | Rapid transition to ground posture |
+| `person_prone` | Person horizontal / on ground ≥ dwell |
+
+### 5.2 Typical rules
+
+| Rule ID | Condition | Default severity |
+|---------|-----------|------------------|
+| `HSE-V-001` | `fall_detected` in active work zone | **critical** |
+| `HSE-V-002` | `person_prone` dwell ≥ 10 s | **high** |
+
+### 5.3 RFID correlation
+
+When `HSE-V-001` or `HSE-V-002` fires, `VisionRfidCorrelationService` attaches RFID zone context and may open `hse_incidents` draft — **never** worker identity on the PPE-style anonymous alert card. Combined with `RFID-003` stationary tag → `LSR-WD-001` — [16](16-hse-incidents-lsr.md).
+
+---
+
+## 6. Cross-domain scenarios
 
 | Scenario | Domains | Behavior |
 |----------|---------|----------|
 | Worker on scaffold near moving crane | Height + vehicle | Two events; dashboard may **correlate** into one incident |
 | Visitor without PPE in yard | PPE + vehicle | PPE alert first; vehicle if enters lane |
 | Night shift | All | IR / low-light model variant; higher confidence threshold |
+| Harness missing in height RFID zone | Height + RFID | `no_harness` + tag in `height_work` zone → `LSR-HGT-001` |
+| Fall + stationary tag | incident_vision + RFID | Correlated HSE incident draft |
 
 ---
 
-## 6. Model versioning
+## 7. Assurance tiers (vision)
+
+| Tier | Expectation |
+|------|-------------|
+| **Inferred** | All vision classes — target &lt;20% FP after tune; not 90% per-event proof |
+| **Instrumented** | N/A for vision — see [12 §13](12-iot-ingestion-and-edge.md#13-assurance-tiers-for-implementers) for sensors |
+
+Store `assurance_tier = inferred` on `detection_events`.
+
+---
+
+## 8. Model versioning
 
 Model name/version are **not** sent in the minimal ingest payload — configure on the camera or site in Laravel ([07](07-data-model-and-apis.md)); stored on `detection_events` for audit.
 

@@ -6,33 +6,33 @@
 
 ## 1. Architecture overview
 
+**IR4 deployment:** One Laravel stack **per SCC site** on isolated LAN — [18](18-saudi-aramco-compliance.md). Field data uses **two uplinks**: 4G VPN (vision, RFID, CO₂, Modbus) and **client site WiFi** (gas only).
+
 ```text
-┌──────────────────────────────────────────────────────────────────┐
-│  Site LAN                                                         │
-│  IP cameras (RTSP) ──▶ Python inference (SEPARATE REPO, per camera) │
-│                        │                                          │
-└────────────────────────┼──────────────────────────────────────────┘
-                         │ HTTPS  POST /api/ingest/camera
-                         ▼
-┌──────────────────────────────────────────────────────────────────┐
-│  Laravel 11 (single project — siteguard/)                         │
-│  ┌────────────────┐  ┌─────────────────┐  ┌──────────────────┐ │
-│  │ Inertia web UI │  │ IngestCamera    │  │ Horizon jobs     │ │
-│  │ + AI chat      │  │ Controller      │  │ rules, AI, notify│ │
-│  └────────────────┘  └─────────────────┘  └──────────────────┘ │
-│           │                  │                    │               │
-│           └──────────────────┴────────────────────┘               │
-│                              ▼                                    │
-│                    MySQL 8 · Redis · S3                          │
-└──────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│  SCC LAN (no outbound internet)                                          │
+│  Laravel 11 · MySQL · Redis · local disk media · 55" live view          │
+│  Gate RFID bridge ──▶ POST /api/ingest/rfid (localhost)                  │
+└───────────────▲───────────────────────────────▲───────────────────────────┘
+                │ 4G VPN (AES-256)              │ Site WiFi (TLS)
+                │                               │
+   ┌────────────┴────────────┐         ┌────────┴────────┐
+   │ Jetson edge (×3/site)   │         │ Pi Zero gas GW  │
+   │ RTSP + vision POST      │         │ POST /ingest/gas│
+   │ RFID + Modbus POST      │         └─────────────────┘
+   └────────────┬────────────┘
+                │
+   Pole cams + RFID ── WiFi bridge ──▶ Jetson
 ```
+
+Full edge spec: [12 — IoT ingestion & edge](12-iot-ingestion-and-edge.md).
 
 | Layer | Technology | In this repo? |
 |-------|------------|---------------|
 | **Dashboard** | Laravel + Inertia + Vue 3 (or React) | Yes |
 | **Persistence** | **MySQL 8+**, Eloquent | Yes |
 | **Queues** | Redis + Horizon | Yes |
-| **Media** | S3 / local disk `storage/app/snapshots` | Yes |
+| **Media** | Local disk `storage/app/` (IR4: no cloud S3) | Yes |
 | **AI assistant** | **`laravel/ai`** (Laravel AI SDK) | Yes |
 | **Vision inference** | Python, OpenCV, YOLO, etc. | **No** — separate deployment |
 
@@ -55,14 +55,30 @@ siteguard/
       Dashboard/
       Api/Ingest/
         IngestCameraController.php
+        IngestRfidController.php
+        IngestSensorController.php
+        IngestGasController.php
+        IngestEdgeHeartbeatController.php
+        IngestMediaController.php
     Models/
     Policies/
     Services/
       RuleEvaluationService.php
+      RfidRuleEvaluationService.php
+      SensorThresholdService.php
+      VisionRfidCorrelationService.php
+      SiteHeadcountService.php
       Ingest/IngestCameraService.php
-      Ai/SiteSafetyChatService.php   # wraps agent prompt + site scope
+      Ingest/IngestRfidService.php
+      Ingest/IngestSensorService.php
+      Ingest/IngestGasService.php
+      Reports/UdpmWeeklyReportService.php
+      Ai/SiteSafetyChatService.php   # optional — disabled when air-gapped
     Jobs/
       EvaluateRulesJob.php
+      EvaluateRfidRulesJob.php
+      GenerateUdpmWeeklyReportJob.php
+      StationaryTagWatchJob.php
   config/
     ai.php                         # laravel/ai — providers, default models
   routes/
@@ -80,7 +96,7 @@ siteguard/
 |----------|-----------|---------|
 | **Dashboard users** | Session + Fortify/Breeze login | `laravel/fortify` or Breeze |
 | **Inertia** | `auth` middleware, CSRF | Built-in |
-| **Python ingest** | Bearer token per `camera_id` | `IngestApiToken` model |
+| **IoT ingest** | Bearer token per device (polymorphic) | `IngestApiToken` — camera, RFID reader, sensor, gas gateway, edge |
 | **Integration API** | Sanctum token | `integrations.manage` |
 | **Authorization** | Dynamic roles + fixed `super_admin` | `spatie/laravel-permission` |
 | **AI providers** | API keys in `.env` → `config/ai.php` | **`laravel/ai`** |
@@ -98,14 +114,19 @@ Browser → web.php → auth → permission middleware → Controller
   → Policy (site access) → Eloquent → Inertia::render()
 ```
 
-### 4.2 Ingest (Python) — single POST per camera
+### 4.2 Ingest (vision + IoT)
 
 ```text
-Python → POST /api/ingest/camera
-  → IngestCameraController → MySQL writes → EvaluateRulesJob → alerts
+Jetson/Python → POST /api/ingest/camera
+  → IngestCameraController → EvaluateRulesJob → alerts
+
+Edge → POST /api/ingest/rfid | /sensor | /gas | /edge/heartbeat
+  → Matching controller → domain jobs → alerts / headcount / UDPM aggregates
+
+Pi Zero → POST /api/ingest/gas (site WiFi only)
 ```
 
-Detail: [06 — AI ingestion API](06-ai-ingestion-api.md)
+Detail: [06 — Camera ingest](06-ai-ingestion-api.md) · [12 — IoT ingest](12-iot-ingestion-and-edge.md)
 
 ### 4.3 AI assistant (Laravel AI SDK)
 
@@ -136,9 +157,9 @@ Detail: [11 — AI Assistant](11-ai-assistant.md)
 
 | Store | Contents |
 |-------|----------|
-| **MySQL 8+** | sites, locations, modules, cameras, zones, rules, events, alerts, users, roles, `ai_*` |
-| **Redis** | cache, queues, rate limits |
-| **S3 / disk** | Decoded snapshots from `payload.snapshot` |
+| **MySQL 8+** | sites, cameras, RFID, sensors, gas, equipment, HSE, LSR, UDPM, users, `ai_*` |
+| **Redis** | cache, queues, rate limits, Reverb |
+| **Local disk** | Snapshots, clips, equipment PDFs, UDPM PDFs |
 
 **`.env`:** `DB_CONNECTION=mysql`
 
@@ -146,15 +167,17 @@ No `organization_id` — global `settings` key-value.
 
 ---
 
-## 7. Python integration contract
+## 7. Integration contracts
 
-| # | Contract |
-|---|----------|
-| 1 | **POST only** — `/api/ingest/camera` |
-| 2 | **One token per camera** |
-| 3 | **Minimal payload** — `event_id`, `captured_at`, `snapshot`, `detections[]` |
+| Plane | Endpoint | Token |
+|-------|----------|-------|
+| Vision | `POST /api/ingest/camera` | Per camera |
+| RFID | `POST /api/ingest/rfid` | Per reader |
+| Sensor | `POST /api/ingest/sensor` | Per sensor device |
+| Gas | `POST /api/ingest/gas` | Per gas gateway |
+| Edge health | `POST /api/ingest/edge/heartbeat` | Per edge device |
 
-[06 — AI ingestion API](06-ai-ingestion-api.md) · [03 §7](03-sites-modules-cameras.md#7-python-ingest-link-laravel--python-contract)
+[06 — Camera ingest](06-ai-ingestion-api.md) · [12 — IoT & edge](12-iot-ingestion-and-edge.md)
 
 ---
 

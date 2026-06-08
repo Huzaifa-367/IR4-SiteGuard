@@ -54,28 +54,53 @@ SiteGuard is **decision support**, not autonomous enforcement. HSE teams stay in
 
 | Topic | Decision |
 |-------|----------|
-| Ingest API | **POST only** — `/api/ingest/camera`; minimal payload + snapshot — [06](06-ai-ingestion-api.md) |
-| Python deployment | **One worker per camera** recommended |
-| Sites / cameras | **Dynamic** in dashboard + integration API — [03](03-sites-modules-cameras.md) |
+| Vision ingest | `POST /api/ingest/camera` — [06](06-ai-ingestion-api.md) |
+| IoT ingest | `POST /api/ingest/rfid`, `/sensor`, `/gas`, `/edge/heartbeat` — [12](12-iot-ingestion-and-edge.md) |
+| Edge deployment | Jetson per vehicle + Pi Zero gas gateway; Python per camera stream |
+| Sites / cameras | **Dynamic** in dashboard — [03](03-sites-modules-cameras.md) |
 | Roles | **Fixed** `super_admin` + **dynamic** roles — [10](10-users-roles-permissions.md) |
-| Dashboard | Laravel + Inertia + Vue |
-| Live video in dashboard | Snapshots from ingest; optional HLS later |
-| Rule engine | JSON DSL in `rules.definition` |
-| Facial recognition / worker identity | **Not in product** |
-| AI assistant | Laravel tool-calling only; internet required |
-| Mobile app | **Not in product** |
+| Dashboard | Laravel + Inertia + React |
+| Live video in dashboard | Snapshots from ingest; SCC 55" live view — optional HLS later |
+| Rule engine | JSON DSL in `rules.definition` + RFID rule service |
+| **Facial recognition** | **Not in product** |
+| **Worker identity** | **RFID only** — never auto-link vision snapshots to workers — [13](13-rfid-ssms.md) |
+| **Anonymous PPE** | Violation logs without worker name — IR4 requirement |
+| AI assistant | Optional; **disabled by default** on air-gapped SCC — [18](18-saudi-aramco-compliance.md) |
+| Mobile app | **Not in product** — equipment QR uses responsive web **E01** |
+| Data residency | **On-premise only** for IR4 — [18](18-saudi-aramco-compliance.md) |
 
 ---
 
-## 6. Compliance mapping (informative)
+## 6. Compliance mapping
+
+### 6.1 Generic (OSHA / ISO 45001)
 
 | Requirement area | SiteGuard feature |
 |------------------|-------------------|
-| PPE program evidence | PPE alerts + snapshot exports |
+| PPE program evidence | PPE alerts + anonymous snapshot exports |
 | Pedestrian–plant separation | Vehicle proximity zones |
-| Fall protection program | Height rules + investigations |
-| Incident investigation | Investigation module + media |
-| Management review | AI assistant + compliance exports |
+| Fall protection program | Height rules + HSE incidents |
+| Incident investigation | Investigations + `hse_incidents` |
+| Management review | UDPM reports + optional AI assistant |
+
+### 6.2 Saudi Aramco / UDPM (IR4)
+
+| Requirement | SiteGuard feature |
+|-------------|-------------------|
+| UDPM-GM-0058 §6.5 | Module 21 — [17](17-udpm-weekly-report.md) |
+| SSMS / RFID | Module 15 — [13](13-rfid-ssms.md) |
+| Gas / CO₂ | Modules 16–17 — [14](14-gas-co2-environmental.md) |
+| Six applicable GIs | [18 — SA compliance](18-saudi-aramco-compliance.md) |
+| Portable device register | `worker_records.portable_devices` |
+| LSR | Module 20 — [16](16-hse-incidents-lsr.md) |
+
+### 6.3 Assurance tiers
+
+| Tier | Sources | Use in reports |
+|------|---------|----------------|
+| **≥90% instrumented** | Gas, CO₂, Modbus env, gate RFID | UDPM automated sections |
+| **70–89%** | Zone RFID position, distributed headcount | Display with disclaimer |
+| **Inferred** | Vision PPE, fall, harness | Decision support; human ack |
 
 ---
 

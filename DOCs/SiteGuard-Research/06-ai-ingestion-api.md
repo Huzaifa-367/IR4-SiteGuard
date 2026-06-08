@@ -221,14 +221,24 @@ while True:
 
 ---
 
-## 9. Out of scope for this API
+## 9. Related ingest APIs (not camera)
 
-| Not supported | Use |
-|-------------|-----|
-| Extra ingest routes | This POST only |
+| Endpoint | Doc |
+|----------|-----|
+| `POST /api/ingest/rfid` | [12 §5](12-iot-ingestion-and-edge.md#5-post-apiingestrfid) |
+| `POST /api/ingest/sensor` | [12 §6](12-iot-ingestion-and-edge.md#6-post-apiingestsensor) |
+| `POST /api/ingest/gas` | [12 §7](12-iot-ingestion-and-edge.md#7-post-apiingestgas) |
+| `POST /api/ingest/edge/heartbeat` | [12 §8](12-iot-ingestion-and-edge.md#8-post-apiingestedgeheartbeat) |
+| `POST /api/ingest/media` | [16 §1.5](16-hse-incidents-lsr.md#15-video-evidence) |
+
+## 10. Out of scope for **this** API
+
+| Not on `/ingest/camera` | Use |
+|-------------------------|-----|
+| RFID / gas / sensor payloads | Endpoints above |
 | Create camera / site | [03](03-sites-modules-cameras.md) dashboard |
 | Site- or module-wide token | **One token per camera** |
 
 ---
 
-[← Index](README.md) · [03 Sites & cameras](03-sites-modules-cameras.md) · **Next:** [07 — Data model](07-data-model-and-apis.md)
+[← Index](README.md) · [12 IoT ingest](12-iot-ingestion-and-edge.md) · **Next:** [07 — Data model](07-data-model-and-apis.md)

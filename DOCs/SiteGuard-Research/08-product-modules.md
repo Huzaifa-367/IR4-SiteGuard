@@ -1,8 +1,10 @@
-# 08 — Product Modules (1–14)
+# 08 — Product Modules (1–21)
 
 [← Index](README.md) · **Next:** [09 Risks & compliance](09-risks-compliance-vision.md)
 
 Each module: **Purpose · Capabilities · User flows · Entities · Permissions · Dashboard tie-in**
+
+**IR4 SCC modules** (12–21) added for RFID, gas, equipment, HSE/LSR, UDPM — see linked docs.
 
 Cross-refs: [03 Sites & cameras](03-sites-modules-cameras.md) · [04 Dashboard UX](04-web-dashboard-ux.md) · [07 Data model](07-data-model-and-apis.md) · [10 RBAC](10-users-roles-permissions.md)
 
@@ -442,21 +444,105 @@ Client-side tools · Auto-acknowledge · Auto rule change · Worker identificati
 
 ---
 
+## Module 15 — RFID / SSMS
+
+**Purpose:** Personnel headcount, zone positioning, evacuation, worker identity (authorized users), portable device register.
+
+**Full spec:** [13 — RFID / SSMS](13-rfid-ssms.md)
+
+| Capability | Detail |
+|------------|--------|
+| Gate entry/exit | Authoritative on-site count |
+| Zone map | Live headcount per `rfid_zone` |
+| Worker registry | Tag programming, contractor, device approval |
+| Evacuation | One-click report + muster UI **D45** |
+| RFID rules | Geofence, occupancy, stationary tag |
+
+**Entities:** `rfid_zones`, `rfid_readers`, `worker_records`, `gate_entry_exit_log`, `evacuation_reports`  
+**Ingest:** `POST /api/ingest/rfid`  
+**Permissions:** `rfid.view`, `workers.manage`, `evacuation.generate`
+
+---
+
+## Module 16 — Gas monitoring
+
+**Purpose:** LEL, O₂, H₂S, CO from vehicle-mounted detectors via Pi Zero → site WiFi.
+
+**Full spec:** [14 — Gas, CO₂ & environmental](14-gas-co2-environmental.md)
+
+**Dashboard:** **D47** live gas panel per vehicle  
+**Ingest:** `POST /api/ingest/gas`  
+**Permissions:** `gas.view`, `gas_thresholds.manage`
+
+---
+
+## Module 17 — Environmental & CO₂
+
+**Purpose:** NDIR CO₂ + client weather/air quality via Modbus on Jetson.
+
+**Dashboard:** **D48** trends  
+**Ingest:** `POST /api/ingest/sensor`  
+**Permissions:** `environmental.view`, `sensors.manage`
+
+---
+
+## Module 18 — QR equipment
+
+**Purpose:** Equipment registry, Zebra labels, smartphone scan page **E01**.
+
+**Full spec:** [15 — QR equipment](15-qr-equipment.md)
+
+**Permissions:** `equipment.view`, `equipment.manage`, `equipment.print`
+
+---
+
+## Module 19 — HSE incidents
+
+**Purpose:** Fall/stationary detection → classification workflow → UDPM §ii.
+
+**Full spec:** [16 — HSE & LSR](16-hse-incidents-lsr.md)
+
+**Dashboard:** **D51**  
+**Permissions:** `hse_incidents.view`, `hse_incidents.classify`
+
+---
+
+## Module 20 — Life Saving Rules (LSR)
+
+**Purpose:** Six automated LSR categories + three manual permit workflows; mandatory `actions_taken`.
+
+**Dashboard:** **D52**, **D53**  
+**Permissions:** `lsr.view`, `lsr.log_manual`, `lsr.actions_update`
+
+---
+
+## Module 21 — UDPM weekly report
+
+**Purpose:** Auto-generate UDPM-GM-0058 §6.5 PDF/CSV per site per week.
+
+**Full spec:** [17 — UDPM weekly report](17-udpm-weekly-report.md)
+
+**Dashboard:** **D54**  
+**Permissions:** `udpm.view`, `udpm.generate`, `udpm.approve`, `udpm.export`
+
+---
+
 ## Module map (dependency)
 
 ```text
-1 Users ─────────────────────────────────────────┐
-2 Sites ──► 3 Modules ──► 4 Cameras ──► 7 Zones  │
-                    │              │              │
-                    └──► 5 Ingest token (per camera)
-                              │
-                    6 Camera health (from POST)
-                              │
-8 PPE ─ 9 Vehicle ─ 10 Height ──► 11 Alerts ◄─────┘
-                                      │
-                    12 Investigations ◄─┤
-                    13 Reports ─────────┤
-                    14 AI assistant ────┘
+1 Users ───────────────────────────────────────────────────────────┐
+2 Sites ──► 3 Modules ──► 4 Cameras ──► 7 Zones                    │
+                    │              │                                 │
+                    └──► 5 Ingest tokens (polymorphic)               │
+                              │                                      │
+8–10 Vision pipelines ──► 11 Alerts ◄────────────────────────────────┤
+12 Investigations        13 Reports (generic)                        │
+14 AI assistant (optional)                                           │
+15 RFID ──► headcount / evacuation                                   │
+16 Gas ──┐                                                           │
+17 Env ──┴──► sensor alarms ──► 11 Alerts                            │
+18 QR equipment (parallel)                                           │
+19 HSE + 20 LSR ──► 21 UDPM weekly report ───────────────────────────┘
 ```
 
 ---
@@ -465,9 +551,11 @@ Client-side tools · Auto-acknowledge · Auto rule change · Worker identificati
 
 | Item | Notes |
 |------|-------|
-| Python vision codebase | Separate repository |
-| Mobile native app | Responsive web only |
-| Multi-tenant SaaS | Single Laravel install |
+| Python / edge agent code | Separate repos — [12](12-iot-ingestion-and-edge.md) |
+| Native mobile app | Responsive web + equipment scan E01 only |
+| Multi-tenant SaaS | On-prem SCC per site (IR4) |
+| Digital Work Permit integration | Manual LSR only unless client API added |
+| Cloud storage / outbound data | Blocked per [18](18-saudi-aramco-compliance.md) |
 
 ---
 

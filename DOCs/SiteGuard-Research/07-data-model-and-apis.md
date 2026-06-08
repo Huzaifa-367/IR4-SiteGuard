@@ -19,8 +19,13 @@ Ingestion: [06](06-ai-ingestion-api.md) · RBAC: [10](10-users-roles-permissions
 8. [Media & investigations](#8-media--investigations)
 9. [Notifications & settings](#9-notifications--settings)
 10. [AI assistant data](#10-ai-assistant-data)
-11. [Dashboard routes (Inertia)](#11-dashboard-routes-inertia)
-12. [Appendices](#appendices)
+11. [RFID / SSMS](#11-rfid--ssms)
+12. [Gas, sensors & edge devices](#12-gas-sensors--edge-devices)
+13. [Equipment QR](#13-equipment-qr)
+14. [HSE, LSR & UDPM](#14-hse-lsr--udpm)
+15. [Dashboard routes (Inertia)](#15-dashboard-routes-inertia)
+16. [API ingest routes](#16-api-ingest-routes)
+17. [Appendices](#appendices)
 
 ---
 
@@ -68,7 +73,19 @@ erDiagram
   ai_sessions ||--o{ ai_messages : has
   users ||--o{ model_has_roles : spatie
   cameras ||--o| ingest_api_tokens : has_one
+  sites ||--o{ rfid_zones : has
+  rfid_zones ||--o{ rfid_readers : has
+  sites ||--o{ worker_records : has
+  worker_records ||--o{ gate_entry_exit_log : has
+  sites ||--o{ gas_gateways : has
+  sites ||--o{ sensor_devices : has
+  sites ||--o{ equipment_assets : has
+  sites ||--o{ hse_incidents : has
+  sites ||--o{ lsr_violation_logs : has
+  sites ||--o{ udpm_weekly_reports : has
 ```
+
+Detail: [13](13-rfid-ssms.md) · [14](14-gas-co2-environmental.md) · [15](15-qr-equipment.md) · [16](16-hse-incidents-lsr.md) · [17](17-udpm-weekly-report.md)
 
 ---
 
@@ -111,12 +128,13 @@ Seeded catalog — not user-created. New permissions added in migrations; `super
 | `site_id` | FK | R | |
 | `is_primary` | `bool` | O | Default site in UI |
 
-### 3.5 `ingest_api_tokens` *(Python — one per camera)*
+### 3.5 `ingest_api_tokens` *(polymorphic — one per ingest device)*
 
 | Column | Type | R/O | Notes |
 |--------|------|-----|-------|
-| `camera_id` | FK | R | **Only** camera this token may POST for |
-| `name` | `string` | O | e.g. "Gate 3 PPE" |
+| `tokenable_type` | `string` | R | `Camera`, `RfidReader`, `SensorDevice`, `GasGateway`, `EdgeDevice` |
+| `tokenable_id` | `uuid` | R | Device PK |
+| `name` | `string` | O | e.g. "Gate main RFID" |
 | `token_hash` | `string` | R | SHA-256 of bearer secret |
 | `token_prefix` | `string` | RO | First 8 chars for UI |
 | `created_by_user_id` | FK | O | |
@@ -124,9 +142,13 @@ Seeded catalog — not user-created. New permissions added in migrations; `super
 | `revoked_at` | `datetime` | O | |
 | `last_used_at` | `datetime` | O | |
 
-**Rule:** `POST /api/ingest/camera` body `camera_id` must match `ingest_api_tokens.camera_id`. Site and module are resolved from the camera row — [06](06-ai-ingestion-api.md).
+**Rules:**
 
-**Unique:** one active token per camera (or allow rotate with revoke of previous).
+- `POST /api/ingest/camera` — body `camera_id` must match token's `Camera` id — [06](06-ai-ingestion-api.md).
+- `POST /api/ingest/rfid` — body `reader_id` must match `RfidReader` id — [12 §5](12-iot-ingestion-and-edge.md#5-post-apiingestrfid).
+- Same pattern for sensor, gas, edge — [12](12-iot-ingestion-and-edge.md).
+
+**Index:** `(tokenable_type, tokenable_id)` unique among active tokens.
 
 ---
 
@@ -178,7 +200,7 @@ Default LLM provider/model: **`config/ai.php`** (Laravel AI SDK), not this table
 
 | Column | Type | R/O | Notes |
 |--------|------|-----|-------|
-| `key` | `string` | R | `ppe`, `vehicle_proximity`, `working_at_height` |
+| `key` | `string` | R | `ppe`, `vehicle_proximity`, `working_at_height`, `incident_vision`, `rfid_ssms`, `gas_monitoring`, `environmental`, `qr_equipment`, `hse_incidents`, `lsr` |
 | `name` | `string` | R | Display |
 | `description` | `text` | O | |
 
@@ -296,6 +318,7 @@ Snapshot stored from `payload.snapshot` → `media_objects` linked to `detection
 | `model_name` | `string` | RO | From camera/site settings default |
 | `model_version` | `string` | RO | From camera/site settings default |
 | `extras` | `json` | O | e.g. `distance_m` when vehicle module |
+| `assurance_tier` | `enum` | RO | `inferred` (vision default) |
 | `snapshot_media_id` | FK | R | From `payload.snapshot` on ingest |
 | `clip_media_id` | FK | O | |
 
@@ -405,7 +428,79 @@ Detail: [11 — AI Assistant](11-ai-assistant.md)
 
 ---
 
-## 11. Dashboard routes (Inertia)
+## 11. RFID / SSMS
+
+Full field list: [13 — RFID / SSMS](13-rfid-ssms.md).
+
+| Table | Purpose |
+|-------|---------|
+| `rfid_zones` | RFID geofence zones (not camera polygons) |
+| `rfid_readers` | Gate, vehicle, pole readers |
+| `worker_records` | Tag EPC ↔ worker identity, portable devices |
+| `rfid_read_events` | Append-only sighting log |
+| `rfid_tag_last_seen` | Current on-site / zone state |
+| `gate_entry_exit_log` | Authoritative entry/exit |
+| `site_headcount_snapshots` | Reporting materialized counts |
+| `evacuation_reports` | One-click evacuation snapshots |
+
+---
+
+## 12. Gas, sensors & edge devices
+
+Full field list: [14 — Gas, CO₂ & environmental](14-gas-co2-environmental.md) · [12 — Edge](12-iot-ingestion-and-edge.md).
+
+| Table | Purpose |
+|-------|---------|
+| `edge_devices` | Jetson units per vehicle |
+| `gas_gateways` | Pi Zero per vehicle |
+| `sensor_devices` | CO₂, weather, air quality Modbus |
+| `gas_readings` | 4-gas rows per poll |
+| `sensor_readings` | Normalized parameter readings |
+| `sensor_alarms` | Threshold breach log |
+| `telematics_devices` | Optional FMC125 — [17 §5](17-udpm-weekly-report.md) |
+
+### 12.1 `edge_devices`
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `site_id` | FK | R |
+| `code` | string | `edge-vehicle-01` |
+| `mount_type` | enum | `vehicle` |
+| `last_heartbeat_at` | datetime | RO |
+| `health_status` | enum | `online`, `offline`, `degraded` |
+| `software_version` | string | O |
+
+---
+
+## 13. Equipment QR
+
+| Table | Purpose |
+|-------|---------|
+| `equipment_assets` | Registry + `qr_slug` |
+| `equipment_documents` | Manuals PDFs |
+| `equipment_inspections` | Inspection history |
+| `equipment_maintenance_records` | PM / corrective |
+| `equipment_qr_scans` | Scan analytics |
+
+Detail: [15 — QR equipment](15-qr-equipment.md).
+
+---
+
+## 14. HSE, LSR & UDPM
+
+| Table | Purpose |
+|-------|---------|
+| `hse_incidents` | Classification workflow |
+| `lsr_violation_logs` | Auto + manual LSR |
+| `vehicle_violation_logs` | UDPM §vii manual |
+| `udpm_weekly_reports` | §6.5 generated reports |
+| `deployment_approvals` | SA GI Phase 2 gates — [18](18-saudi-aramco-compliance.md) |
+
+Detail: [16](16-hse-incidents-lsr.md) · [17](17-udpm-weekly-report.md).
+
+---
+
+## 15. Dashboard routes (Inertia)
 
 **Prefix:** `/` with `auth` middleware. Permissions via `can:` middleware — see [10](10-users-roles-permissions.md).
 
@@ -446,12 +541,37 @@ Detail: [11 — AI Assistant](11-ai-assistant.md)
 | POST | `/sites/{site}/ai/sessions/{sid}/messages` | `ai.assistant.use` |
 | POST | `/sites/{site}/ai/command` | `ai.assistant.use` |
 | POST | `/sites/{site}/ai/actions/execute` | `ai.assistant.use` + action policy |
+| GET | `/sites/{site}/rfid` | `rfid.view` |
+| GET | `/sites/{site}/workers` | `workers.view` |
+| POST | `/sites/{site}/workers` | `workers.manage` |
+| POST | `/sites/{site}/evacuation/generate` | `evacuation.generate` |
+| GET | `/sites/{site}/gas` | `gas.view` |
+| GET | `/sites/{site}/environmental` | `environmental.view` |
+| GET | `/sites/{site}/equipment` | `equipment.view` |
+| POST | `/sites/{site}/equipment` | `equipment.manage` |
+| GET | `/sites/{site}/hse-incidents` | `hse_incidents.view` |
+| POST | `/hse-incidents/{id}/classify` | `hse_incidents.classify` |
+| GET | `/sites/{site}/lsr` | `lsr.view` |
+| POST | `/sites/{site}/lsr/manual` | `lsr.log_manual` |
+| GET | `/sites/{site}/udpm-reports` | `udpm.view` |
+| POST | `/sites/{site}/udpm-reports/generate` | `udpm.generate` |
+| GET | `/equipment/{qr_slug}` | public scan E01 — throttled |
 
-**Ingest route** in `routes/api.php` — **POST only** ([06](06-ai-ingestion-api.md)):
+---
+
+## 16. API ingest routes
+
+All in `routes/api.php` — bearer token auth — [12](12-iot-ingestion-and-edge.md):
 
 | Method | Path |
 |--------|------|
 | POST | `/api/ingest/camera` |
+| POST | `/api/ingest/rfid` |
+| POST | `/api/ingest/sensor` |
+| POST | `/api/ingest/gas` |
+| POST | `/api/ingest/edge/heartbeat` |
+| POST | `/api/ingest/media` |
+| POST | `/api/ingest/telematics` |
 
 **Integration routes** (`routes/api.php`, Sanctum integration token):
 
@@ -477,6 +597,10 @@ Detail: [11 — AI Assistant](11-ai-assistant.md)
 | **Ingest POST** | Single `POST /api/ingest/camera` per camera |
 | **Ingest token** | One bearer token per camera — `POST /api/ingest/camera` only |
 | **Ingest payload** | `event_id`, `captured_at`, `snapshot`, `detections[]` — [06 §3](06-ai-ingestion-api.md#3-request-body-minimal) |
+| **RFID zone** | Physical zone for readers — not camera polygon |
+| **Assurance tier** | `instrumented` (sensor) vs `inferred` (AI) |
+| **UDPM** | Weekly report per UDPM-GM-0058 §6.5 |
+| **Anonymous PPE** | Vision alerts without worker identity |
 
 ### Appendix B — Eloquent relationships (sketch)
 

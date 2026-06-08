@@ -27,6 +27,10 @@
 | PPE | Amber `#F59E0B` | Hard hat |
 | Vehicle proximity | Blue `#3B82F6` | Truck / warning triangle |
 | Working at height | Purple `#8B5CF6` | Ladder |
+| RFID / SSMS | Teal `#14B8A6` | Badge / map pin |
+| Gas / CO₂ | Red `#DC2626` | Gas meter |
+| Environmental | Green `#22C55E` | Cloud / sun |
+| HSE / LSR | Rose `#F43F5E` | Incident triangle |
 | System (camera offline) | Slate `#64748B` | Camera |
 
 Severity (cross-module): `critical` red · `high` orange · `medium` yellow · `low` slate
@@ -44,8 +48,17 @@ Severity (cross-module): `critical` red · `high` orange · `medium` yellow · `
 /alerts/{id}  Alert detail
 /sites/{site}/investigations
 /reports
+/sites/{site}/udpm-reports
+/sites/{site}/rfid
+/sites/{site}/workers
+/sites/{site}/gas
+/sites/{site}/environmental
+/sites/{site}/equipment
+/sites/{site}/hse-incidents
+/sites/{site}/lsr
+/equipment/{qr_slug}  Public scan (E01)
 /settings  (global + users + tokens + notifications)
-/sites/{site}/ai  AI chat
+/sites/{site}/ai  AI chat (optional)
 ```
 
 ---
@@ -444,10 +457,71 @@ Detail: [11 — AI Assistant](11-ai-assistant.md)
 
 ---
 
-## 17. Out of product scope (UX)
+## 18. SCC live view (55" display mode)
+
+**Route:** `/sites/{site}/live` · fullscreen · **D55**
+
+Rotating layout for control room:
+
+| Panel | Content |
+|-------|---------|
+| Camera mosaic | Live streams or latest snapshots with AI overlay |
+| RFID map | Zone pins + per-zone headcount |
+| Gas strip | 3 vehicle panels LEL/O₂/H₂S/CO |
+| Critical strip | Open critical alerts (all modules) |
+
+Keyboard shortcut `F` from site overview. Dark theme, min 400 nits assumed on display hardware.
+
+---
+
+## 19. IR4 module screens
+
+| ID | Screen | Doc |
+|----|--------|-----|
+| D40 | Field devices (edge, readers, gateways) | [12](12-iot-ingestion-and-edge.md) |
+| D41 | RFID zone map | [13](13-rfid-ssms.md) |
+| D42 | Worker registry | [13](13-rfid-ssms.md) |
+| D43 | Gate entry/exit log | [13](13-rfid-ssms.md) |
+| D45 | Evacuation / muster | [13](13-rfid-ssms.md) |
+| D46 | Portable device register | [13](13-rfid-ssms.md) |
+| D47 | Live gas panel | [14](14-gas-co2-environmental.md) |
+| D48 | CO₂ & environmental trends | [14](14-gas-co2-environmental.md) |
+| D49 | Sensor alarm history | [14](14-gas-co2-environmental.md) |
+| D50 | Equipment registry + print QR | [15](15-qr-equipment.md) |
+| D51 | HSE incident classification | [16](16-hse-incidents-lsr.md) |
+| D52 | LSR log (auto + manual) | [16](16-hse-incidents-lsr.md) |
+| D53 | LSR pending actions | [16](16-hse-incidents-lsr.md) |
+| D54 | UDPM weekly report | [17](17-udpm-weekly-report.md) |
+| D55 | SCC 55" live view | §18 above |
+| E01 | Public equipment scan (mobile web) | [15](15-qr-equipment.md) |
+
+### D41 RFID map wireframe
+
+```text
+┌────────────────────────────────────────────────────────────┐
+│ RFID MAP · Central TCF · On site: 87 · Updated 14:32      │
+├────────────────────────────────────────────────────────────┤
+│  [Map/satellite]                                            │
+│    ● Gate (12)   ● Work front A (34)   ● Work front B (21) │
+│    ○ Pole-3 offline                                         │
+├────────────────────────────────────────────────────────────┤
+│ Zone table: name · count · max · reader health             │
+│ [Evacuation report]  [Worker list]                         │
+└────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 20. Screen index (complete)
+
+Previous IDs D00–D35, U01–U05, A01–A03 plus **D40–D55**, **E01** — see §19.
+
+---
+
+## 21. Out of product scope (UX)
 
 - Worker self-service portal  
-- Native mobile app  
+- Native mobile app (equipment E01 is responsive web)  
 - VR / digital twin viewer  
 
 ---

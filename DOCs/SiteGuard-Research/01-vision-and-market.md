@@ -6,9 +6,11 @@
 
 ## 1. Executive summary
 
-Construction and industrial sites lose billions annually to injuries, downtime, and insurance premiums. Manual safety walks cannot cover every zone 24/7. **SiteGuard AI** is a **single-project** system (one operator, many sites): **Python** runs vision per camera and **POSTs** minimal payloads (detections + snapshot) to **Laravel**; HSE teams manage sites, cameras, and alerts through a **Laravel + Inertia web dashboard**.
+Construction and industrial sites lose billions annually to injuries, downtime, and insurance premiums. Manual safety walks cannot cover every zone 24/7. **SiteGuard AI** is a **Safety Command Center platform**: vision (Python/Jetson), RFID personnel tracking, gas/CO₂/environmental sensors, QR equipment, HSE/LSR workflows, and **UDPM-GM-0058** weekly reporting — unified in **Laravel + Inertia**.
 
-**Positioning:** *On-prem or private-cloud safety intelligence — your cameras, your models, one control plane.*
+**IR4 positioning:** *On-premise SCC — your site boundary, your data, one control plane. No cloud dependency.*
+
+**Generic positioning:** *On-prem or private-cloud safety intelligence — cameras + IoT + compliance reporting.*
 
 ---
 
@@ -28,21 +30,23 @@ Construction and industrial sites lose billions annually to injuries, downtime, 
 ## 3. Solution
 
 ```text
-Per site:
-  Cameras (multiple angles per detection module)
-    → Python inference (separate repo — typically one worker per camera)
-        → POST /api/ingest/camera  (token + camera_id + snapshot + detections)
-            → Rules → Alerts
-                → Inertia dashboard (Laravel)
-                → AI assistant (Laravel AI SDK — `laravel/ai` agent + tools)
+Per SCC site (on-prem Laravel):
+  Cameras → Jetson/Python → POST /api/ingest/camera → PPE / fall / height alerts
+  RFID readers → POST /api/ingest/rfid → headcount, geofence, evacuation
+  Gas (Pi Zero) → POST /api/ingest/gas → LEL / H₂S / O₂ / CO
+  Modbus sensors → POST /api/ingest/sensor → CO₂, weather, environmental
+  Equipment QR → smartphone scan → /equipment/{slug}
+        → Rules + UDPM weekly report + Inertia dashboard
+        → AI assistant (optional — off on air-gapped SCC)
 ```
 
 **What we do not build in the Laravel repo:**
 
-- Python training / inference code (separate project)  
-- Consumer mobile app for workers  
+- Python / Jetson / Pi Zero edge agents (separate projects) — [12](12-iot-ingestion-and-edge.md)  
+- Consumer mobile app (equipment scan is responsive web)  
 - Multi-tenant SaaS signup/billing  
 - Autonomous machine interlocks (advisory alerts only)  
+- Digital Work Permit integration (manual LSR unless client API added)  
 
 ---
 
@@ -99,10 +103,12 @@ Detail: [03 — Sites, modules & cameras](03-sites-modules-cameras.md) · [10 �
 
 | Framework | Relevance |
 |-----------|-----------|
+| **UDPM-GM-0058** (Saudi Aramco) | SCC weekly report §6.5 — [17](17-udpm-weekly-report.md) |
+| **SA Governance Instructions** (×6) | On-prem, CCTV, portable devices — [18](18-saudi-aramco-compliance.md) |
 | OSHA (US) | PPE 1926.28, fall protection 1926.501, vehicles 1926.601 |
 | UK HSE CDM | Principal contractor duty to manage site safety |
 | ISO 45001 | OH&S management system evidence |
-| GDPR / UK GDPR | Worker images = personal data; retention & DPIA |
+| GDPR / UK GDPR | Worker images = personal data; RFID identity; retention & DPIA |
 
 Detail: [09 — Risks & compliance](09-risks-compliance-vision.md)
 
