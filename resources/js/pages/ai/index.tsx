@@ -144,60 +144,70 @@ export default function AiIndex({
         );
     }
 
+    const panelClassName =
+        'flex min-h-0 flex-col overflow-hidden py-0 [&>[data-slot=card-header]]:shrink-0 [&>[data-slot=card-content]]:flex [&>[data-slot=card-content]]:min-h-0 [&>[data-slot=card-content]]:flex-1 [&>[data-slot=card-content]]:flex-col';
+
     return (
         <>
             <Head title={`AI — ${siteName}`} />
-            <ConceptPageShell>
-                <ConceptPageHeader
-                    title="Safety assistant"
-                    description={`${sessions.total.toLocaleString()} sessions in ${filters.label.toLowerCase()} — ${siteName}`}
-                >
-                    <TimeRangeSelect filters={filters} />
-                </ConceptPageHeader>
-                {! aiConfigured ? (
-                    <p className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-900 dark:text-amber-100">
-                        Add an OpenAI API key in{' '}
-                        <a href="/settings/platform" className="font-medium underline">
-                            Platform settings
-                        </a>{' '}
-                        to enable live responses.
-                    </p>
-                ) : null}
-                <div className="grid gap-4 lg:grid-cols-[240px_1fr]">
-                    <ConceptTableCard title="Sessions">
-                        <div className="flex flex-col gap-2 p-3">
-                            <Form {...storeSession.form()}>
-                                {({ processing }) => (
-                                    <Button type="submit" size="sm" variant="outline" disabled={processing}>
-                                        New chat
-                                    </Button>
-                                )}
-                            </Form>
-                            <ul className="space-y-1 text-sm">
-                                {sessions.data.map((session) => (
-                                    <li key={session.id}>
-                                        <button
-                                            type="button"
-                                            className={`w-full rounded px-2 py-1 text-left hover:bg-muted ${
-                                                sessionId === session.id ? 'bg-muted font-medium' : ''
-                                            }`}
-                                            onClick={() => loadSession(session.id)}
-                                        >
-                                            {session.title}
-                                        </button>
-                                    </li>
-                                ))}
-                            </ul>
-                            <ConceptPagination links={sessions.links} className="pt-0" />
+            <ConceptPageShell className="flex h-[calc(100svh-4rem)] flex-col gap-4 space-y-0 overflow-hidden py-4">
+                <div className="shrink-0 space-y-4">
+                    <ConceptPageHeader
+                        title="Safety assistant"
+                        description={`${sessions.total.toLocaleString()} sessions in ${filters.label.toLowerCase()} — ${siteName}`}
+                    >
+                        <TimeRangeSelect filters={filters} />
+                    </ConceptPageHeader>
+                    {! aiConfigured ? (
+                        <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-900 dark:text-amber-100">
+                            Add an OpenAI API key in{' '}
+                            <a href="/settings/platform" className="font-medium underline">
+                                Platform settings
+                            </a>{' '}
+                            to enable live responses.
+                        </p>
+                    ) : null}
+                </div>
+
+                <div className="grid min-h-0 flex-1 gap-4 overflow-hidden lg:grid-cols-[240px_minmax(0,1fr)]">
+                    <ConceptTableCard title="Sessions" className={`${panelClassName} max-h-48 lg:max-h-none`}>
+                        <div className="flex min-h-0 flex-1 flex-col">
+                            <div className="shrink-0 border-b p-3">
+                                <Form {...storeSession.form()}>
+                                    {({ processing }) => (
+                                        <Button type="submit" size="sm" variant="outline" disabled={processing} className="w-full">
+                                            New chat
+                                        </Button>
+                                    )}
+                                </Form>
+                            </div>
+                            <div className="min-h-0 flex-1 overflow-y-auto p-3">
+                                <ul className="space-y-1 text-sm">
+                                    {sessions.data.map((session) => (
+                                        <li key={session.id}>
+                                            <button
+                                                type="button"
+                                                className={`w-full rounded px-2 py-1.5 text-left hover:bg-muted ${
+                                                    sessionId === session.id ? 'bg-muted font-medium' : ''
+                                                }`}
+                                                onClick={() => loadSession(session.id)}
+                                            >
+                                                {session.title}
+                                            </button>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                            <div className="shrink-0 border-t px-3 py-2">
+                                <ConceptPagination links={sessions.links} className="pt-0" />
+                            </div>
                         </div>
                     </ConceptTableCard>
-                    <ConceptTableCard
-                        title="Chat"
-                        className="min-h-[32rem] gap-0 py-0 [&>[data-slot=card-content]]:flex [&>[data-slot=card-content]]:min-h-0 [&>[data-slot=card-content]]:flex-1 [&>[data-slot=card-content]]:flex-col"
-                    >
+
+                    <ConceptTableCard title="Chat" className={panelClassName}>
                         {sessionId ? (
-                            <div className="flex min-h-[28rem] flex-1 flex-col">
-                                <div className="flex-1 space-y-4 overflow-y-auto p-4">
+                            <div className="flex min-h-0 flex-1 flex-col">
+                                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
                                     {messages.length === 0 ? (
                                         <p className="text-center text-sm text-muted-foreground">
                                             Ask a question about alerts, cameras, or safety trends for{' '}
@@ -222,11 +232,11 @@ export default function AiIndex({
                                     <div ref={scrollAnchorRef} className="h-px shrink-0" aria-hidden />
                                 </div>
                                 {streamError ? (
-                                    <p className="border-t px-4 py-2 text-sm text-destructive">{streamError}</p>
+                                    <p className="shrink-0 border-t px-4 py-2 text-sm text-destructive">{streamError}</p>
                                 ) : null}
                                 <form
                                     onSubmit={handleSubmit}
-                                    className="flex gap-2 border-t bg-muted/20 p-4"
+                                    className="flex shrink-0 gap-2 border-t bg-muted/20 p-4"
                                 >
                                     <div className="flex-1">
                                         <Label htmlFor="content" className="sr-only">
@@ -258,9 +268,11 @@ export default function AiIndex({
                                 </form>
                             </div>
                         ) : (
-                            <p className="p-4 text-sm text-muted-foreground">
-                                Start a new chat to use the assistant.
-                            </p>
+                            <div className="flex min-h-0 flex-1 items-center justify-center p-4">
+                                <p className="text-sm text-muted-foreground">
+                                    Start a new chat to use the assistant.
+                                </p>
+                            </div>
                         )}
                     </ConceptTableCard>
                 </div>
