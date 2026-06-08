@@ -1,10 +1,15 @@
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, router } from '@inertiajs/react';
+import { useCallback } from 'react';
 import {
     ConceptPageHeader,
     ConceptPageShell,
+    ConceptPagination,
     ConceptTableCard,
 } from '@/components/concepts';
+import { EnumSelect, type EnumOption } from '@/components/siteguard/enum-select';
+import { IotRelativeTime } from '@/components/iot/iot-ui';
 import { ConceptStatusBadge } from '@/components/concepts/concept-status-badge';
+import { Button } from '@/components/ui/button';
 import {
     Table,
     TableBody,
@@ -15,6 +20,7 @@ import {
 } from '@/components/ui/table';
 import AlertSnapshot from '@/components/siteguard/alert-snapshot';
 import { index as alertsIndex, show as alertShow } from '@/routes/alerts';
+import { show as siteShow } from '@/routes/sites';
 
 type AlertRow = {
     id: number;
@@ -33,14 +39,24 @@ type Paginator<T> = {
     current_page: number;
     last_page: number;
     total: number;
+    links: { url: string | null; label: string; active: boolean }[];
 };
 
 type AlertsIndexProps = {
     alerts: Paginator<AlertRow>;
     filters: { status: string };
+    statusOptions: EnumOption[];
 };
 
-export default function AlertsIndex({ alerts }: AlertsIndexProps) {
+export default function AlertsIndex({ alerts, filters, statusOptions }: AlertsIndexProps) {
+    const applyStatus = useCallback((status: string) => {
+        router.get(
+            alertsIndex({ query: status ? { status } : {} }),
+            {},
+            { preserveState: true, preserveScroll: true },
+        );
+    }, []);
+
     return (
         <>
             <Head title="Alerts" />
@@ -50,6 +66,32 @@ export default function AlertsIndex({ alerts }: AlertsIndexProps) {
                     description="Safety alerts raised from detection rules."
                 />
                 <ConceptTableCard>
+                    <div className="flex flex-wrap items-end gap-3 border-b px-4 py-3">
+                        <div className="min-w-[10rem]">
+                            <label htmlFor="status-filter" className="mb-1 block text-xs text-muted-foreground">
+                                Status
+                            </label>
+                            <EnumSelect
+                                id="status-filter"
+                                name="status"
+                                options={[{ value: '', label: 'All statuses' }, ...statusOptions]}
+                                defaultValue={filters.status}
+                                className="h-8 text-xs"
+                                placeholder="All statuses"
+                            />
+                        </div>
+                        <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                                const select = document.getElementById('status-filter') as HTMLSelectElement | null;
+                                applyStatus(select?.value ?? '');
+                            }}
+                        >
+                            Apply
+                        </Button>
+                    </div>
                     <Table>
                         <TableHeader>
                             <TableRow>
@@ -91,7 +133,13 @@ export default function AlertsIndex({ alerts }: AlertsIndexProps) {
                                             </Link>
                                         </TableCell>
                                         <TableCell>
-                                            {alert.site?.name ?? '—'}
+                                            {alert.site ? (
+                                                <Link href={siteShow(alert.site.id)} className="hover:underline">
+                                                    {alert.site.name}
+                                                </Link>
+                                            ) : (
+                                                '—'
+                                            )}
                                         </TableCell>
                                         <TableCell>
                                             {alert.camera?.name ?? '—'}
@@ -121,13 +169,14 @@ export default function AlertsIndex({ alerts }: AlertsIndexProps) {
                                             </ConceptStatusBadge>
                                         </TableCell>
                                         <TableCell className="text-muted-foreground">
-                                            {alert.opened_at}
+                                            <IotRelativeTime iso={alert.opened_at} />
                                         </TableCell>
                                     </TableRow>
                                 ))
                             )}
                         </TableBody>
                     </Table>
+                    <ConceptPagination links={alerts.links} total={alerts.total} />
                 </ConceptTableCard>
             </ConceptPageShell>
         </>

@@ -5,6 +5,11 @@ namespace App\Jobs;
 use App\Models\Alert;
 use App\Models\Camera;
 use App\Models\DetectionEvent;
+use App\Models\DetectionModule;
+use App\Models\Rule;
+use App\Services\Rfid\VisionRfidCorrelationService;
+use App\Support\LsrAutoLog;
+use App\Support\SiteRuleResolver;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 
@@ -17,7 +22,7 @@ class EvaluateDetectionRulesJob implements ShouldQueue
         public readonly string $ingestEventId,
     ) {}
 
-    public function handle(): void
+    public function handle(VisionRfidCorrelationService $correlation): void
     {
         $camera = Camera::query()
             ->with(['zones.rules'])
@@ -30,6 +35,16 @@ class EvaluateDetectionRulesJob implements ShouldQueue
         $events = DetectionEvent::query()
             ->where('ingest_event_id', $this->ingestEventId)
             ->get();
+
+        $incidentModule = DetectionModule::query()->where('key', 'incident_vision')->first();
+
+        $siteIncidentRules = $incidentModule
+            ? Rule::query()
+                ->where('site_id', $camera->site_id)
+                ->where('detection_module_id', $incidentModule->id)
+                ->where('is_active', true)
+                ->get()
+            : collect();
 
         foreach ($events as $event) {
             $classKeys = collect($event->classes)->pluck('key')->filter()->all();
@@ -50,14 +65,28 @@ class EvaluateDetectionRulesJob implements ShouldQueue
                         continue;
                     }
 
-                    $this->openOrBumpAlert($camera, $event, $rule);
+                    $this->openOrBumpAlert($camera, $event, $rule, $correlation);
                 }
+            }
+
+            foreach ($siteIncidentRules as $rule) {
+                $match = $rule->definition['match'] ?? null;
+
+                if ($match === null || ! in_array($match, $classKeys, true)) {
+                    continue;
+                }
+
+                $this->openOrBumpAlert($camera, $event, $rule, $correlation);
             }
         }
     }
 
-    private function openOrBumpAlert(Camera $camera, DetectionEvent $event, $rule): void
-    {
+    private function openOrBumpAlert(
+        Camera $camera,
+        DetectionEvent $event,
+        Rule $rule,
+        VisionRfidCorrelationService $correlation,
+    ): void {
         $existing = Alert::query()
             ->where('rule_id', $rule->id)
             ->where('camera_id', $camera->id)
@@ -73,7 +102,7 @@ class EvaluateDetectionRulesJob implements ShouldQueue
             return;
         }
 
-        Alert::query()->create([
+        $alert = Alert::query()->create([
             'site_id' => $camera->site_id,
             'camera_id' => $camera->id,
             'detection_module_id' => $camera->detection_module_id,
@@ -86,5 +115,13 @@ class EvaluateDetectionRulesJob implements ShouldQueue
             'occurrence_count' => 1,
             'opened_at' => now(),
         ]);
+
+        if (SiteRuleResolver::ruleHasMatch($rule, SiteRuleResolver::correlationMatches('fall'))
+            || SiteRuleResolver::ruleHasMatch($rule, SiteRuleResolver::correlationMatches('harness'))
+            || str_contains(strtolower($rule->name), 'harness')) {
+            $correlation->processNewAlert($alert);
+        } else {
+            LsrAutoLog::fromAlert($alert);
+        }
     }
 }

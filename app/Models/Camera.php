@@ -2,13 +2,15 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasIngestApiToken;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Camera extends Model
 {
+    use HasIngestApiToken;
+
     /**
      * @var list<string>
      */
@@ -60,11 +62,6 @@ class Camera extends Model
     public function zones(): HasMany
     {
         return $this->hasMany(Zone::class);
-    }
-
-    public function ingestToken(): HasOne
-    {
-        return $this->hasOne(IngestApiToken::class);
     }
 
     public function detectionEvents(): HasMany

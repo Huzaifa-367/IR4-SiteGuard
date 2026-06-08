@@ -122,6 +122,60 @@ class PermissionRegistry
                     'settings.manage' => 'Manage global settings',
                 ],
             ],
+            'rfid' => [
+                'label' => 'RFID / SSMS',
+                'description' => 'Personnel tracking and evacuation.',
+                'permissions' => [
+                    'rfid.view' => 'View RFID map and headcount',
+                    'rfid_zones.manage' => 'Manage RFID zones and readers',
+                    'workers.view' => 'View worker records',
+                    'workers.manage' => 'Manage worker records and tags',
+                    'gate_log.view' => 'View gate entry and exit log',
+                    'evacuation.generate' => 'Generate evacuation reports',
+                    'portable_devices.manage' => 'Manage portable device register',
+                ],
+            ],
+            'gas_environmental' => [
+                'label' => 'Gas & environmental',
+                'description' => 'Gas detectors and environmental sensors.',
+                'permissions' => [
+                    'gas.view' => 'View live gas dashboard',
+                    'gas_thresholds.manage' => 'Manage gas alarm thresholds',
+                    'environmental.view' => 'View CO₂ and environmental data',
+                    'sensors.manage' => 'Manage sensor devices and Modbus maps',
+                ],
+            ],
+            'equipment' => [
+                'label' => 'Equipment QR',
+                'description' => 'Equipment registry and labels.',
+                'permissions' => [
+                    'equipment.view' => 'View equipment registry',
+                    'equipment.manage' => 'Manage equipment records',
+                    'equipment.print' => 'Print QR labels',
+                ],
+            ],
+            'hse_lsr' => [
+                'label' => 'HSE & LSR',
+                'description' => 'Incidents and Life Saving Rules.',
+                'permissions' => [
+                    'hse_incidents.view' => 'View HSE incidents',
+                    'hse_incidents.classify' => 'Classify HSE incidents',
+                    'lsr.view' => 'View LSR log',
+                    'lsr.log_manual' => 'Log manual LSR violations',
+                    'lsr.actions_update' => 'Update LSR actions taken',
+                    'vehicle_violations.log' => 'Log vehicle violations',
+                ],
+            ],
+            'udpm' => [
+                'label' => 'UDPM reports',
+                'description' => 'UDPM-GM-0058 weekly reporting.',
+                'permissions' => [
+                    'udpm.view' => 'View UDPM weekly reports',
+                    'udpm.generate' => 'Generate UDPM reports',
+                    'udpm.approve' => 'Approve UDPM reports',
+                    'udpm.export' => 'Export UDPM reports',
+                ],
+            ],
         ];
     }
 

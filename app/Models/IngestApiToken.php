@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 class IngestApiToken extends Model
 {
@@ -11,7 +12,8 @@ class IngestApiToken extends Model
      * @var list<string>
      */
     protected $fillable = [
-        'camera_id',
+        'tokenable_type',
+        'tokenable_id',
         'name',
         'token_hash',
         'token_prefix',
@@ -33,9 +35,14 @@ class IngestApiToken extends Model
         ];
     }
 
-    public function camera(): BelongsTo
+    public function tokenable(): MorphTo
     {
-        return $this->belongsTo(Camera::class);
+        return $this->morphTo();
+    }
+
+    public function createdBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by_user_id');
     }
 
     public function isValid(): bool

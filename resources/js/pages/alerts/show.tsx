@@ -31,6 +31,8 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import AlertController from '@/actions/App/Http/Controllers/AlertController';
+import { IotRelativeTime } from '@/components/iot/iot-ui';
 import {
     acknowledge,
     dismiss,
@@ -38,6 +40,9 @@ import {
     show as alertShow,
 } from '@/routes/alerts';
 import { show as investigationShow } from '@/routes/investigations';
+import { show as hseIncidentShow } from '@/routes/iot/hse-incidents';
+import { index as rulesIndex } from '@/routes/rules';
+import { show as siteShow } from '@/routes/sites';
 
 type LinkedInvestigation = {
     id: number;
@@ -73,13 +78,21 @@ type AlertActionRow = {
     created_at: string | null;
 };
 
+type LinkedHseIncident = {
+    id: number;
+    incident_number: string;
+    status: string;
+};
+
 type AlertShowProps = {
     alert: AlertDetail;
     actions: AlertActionRow[];
+    linkedHseIncident: LinkedHseIncident | null;
     permissions: {
         canAcknowledge: boolean;
         canDismiss: boolean;
         canManageInvestigations: boolean;
+        canCreateHseIncident: boolean;
     };
     users: { id: number; name: string }[];
     openInvestigations: { id: number; title: string }[];
@@ -88,6 +101,7 @@ type AlertShowProps = {
 export default function AlertShow({
     alert,
     actions,
+    linkedHseIncident,
     permissions,
     users,
     openInvestigations,
@@ -104,11 +118,41 @@ export default function AlertShow({
             <ConceptPageShell>
                 <ConceptPageHeader
                     title={alert.title}
-                    description={[alert.site?.name, alert.camera?.name, alert.rule?.code]
-                        .filter(Boolean)
-                        .join(' · ')}
+                    description={
+                        <span className="flex flex-wrap items-center gap-1">
+                            {alert.site ? (
+                                <Link href={siteShow(alert.site.id)} className="hover:underline">
+                                    {alert.site.name}
+                                </Link>
+                            ) : null}
+                            {alert.camera ? <span>· {alert.camera.name}</span> : null}
+                            {alert.rule ? (
+                                <span>
+                                    ·{' '}
+                                    <Link href={rulesIndex()} className="hover:underline">
+                                        {alert.rule.code}
+                                    </Link>
+                                </span>
+                            ) : null}
+                        </span>
+                    }
                 >
                     <div className="flex flex-wrap gap-2">
+                        {linkedHseIncident ? (
+                            <Button variant="outline" asChild>
+                                <Link href={hseIncidentShow(linkedHseIncident.id)}>
+                                    HSE {linkedHseIncident.incident_number}
+                                </Link>
+                            </Button>
+                        ) : permissions.canCreateHseIncident ? (
+                            <Form {...AlertController.createHseIncident.form({ alert: alert.id })}>
+                                {({ processing }) => (
+                                    <Button type="submit" variant="outline" disabled={processing}>
+                                        Create HSE incident
+                                    </Button>
+                                )}
+                            </Form>
+                        ) : null}
                         {permissions.canManageInvestigations ? (
                             <>
                                 <Button onClick={() => setCreateInvestigationOpen(true)}>
@@ -172,8 +216,14 @@ export default function AlertShow({
                                 ),
                             },
                             { label: 'Occurrences', value: alert.occurrence_count },
-                            { label: 'Opened', value: alert.opened_at ?? '—' },
-                            { label: 'Captured', value: alert.captured_at ?? '—' },
+                            {
+                                label: 'Opened',
+                                value: alert.opened_at ? <IotRelativeTime iso={alert.opened_at} /> : '—',
+                            },
+                            {
+                                label: 'Captured',
+                                value: alert.captured_at ? <IotRelativeTime iso={alert.captured_at} /> : '—',
+                            },
                         ]}
                     />
                 </div>
@@ -214,7 +264,7 @@ export default function AlertShow({
                                             {investigation.assigned_user ?? '—'}
                                         </TableCell>
                                         <TableCell className="text-muted-foreground">
-                                            {investigation.opened_at ?? '—'}
+                                            <IotRelativeTime iso={investigation.opened_at} />
                                         </TableCell>
                                     </TableRow>
                                 ))
@@ -250,7 +300,7 @@ export default function AlertShow({
                                         <TableCell>{row.user ?? '—'}</TableCell>
                                         <TableCell>{row.note ?? '—'}</TableCell>
                                         <TableCell className="text-muted-foreground">
-                                            {row.created_at ?? '—'}
+                                            <IotRelativeTime iso={row.created_at} />
                                         </TableCell>
                                     </TableRow>
                                 ))

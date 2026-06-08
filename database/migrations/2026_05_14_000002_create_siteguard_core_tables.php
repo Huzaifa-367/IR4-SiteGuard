@@ -187,12 +187,13 @@ return new class extends Migration
             $table->string('severity');
             $table->string('status')->default('open');
             $table->string('title');
-            $table->foreignId('first_detection_event_id')->constrained('detection_events');
+            $table->foreignId('first_detection_event_id')->nullable()->constrained('detection_events')->nullOnDelete();
             $table->foreignId('last_detection_event_id')->nullable()->constrained('detection_events')->nullOnDelete();
             $table->unsignedInteger('occurrence_count')->default(1);
             $table->timestamp('opened_at');
             $table->timestamp('closed_at')->nullable();
             $table->foreignId('assigned_user_id')->nullable()->constrained('users')->nullOnDelete();
+            $table->json('metadata')->nullable();
             $table->timestamps();
         });
 

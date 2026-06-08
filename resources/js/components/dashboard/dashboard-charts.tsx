@@ -1,5 +1,4 @@
 import { Link } from '@inertiajs/react';
-import { Fragment } from 'react';
 import {
     Area,
     AreaChart,
@@ -8,7 +7,6 @@ import {
     CartesianGrid,
     Cell,
     Legend,
-    Line,
     Pie,
     PieChart,
     RadialBar,
@@ -20,6 +18,8 @@ import {
 } from 'recharts';
 import { ConceptStatusBadge } from '@/components/concepts/concept-status-badge';
 import { ConceptTableCard } from '@/components/concepts/concept-table-card';
+import { IotEmptyState, IotHealthBadge, IotRelativeTime } from '@/components/iot/iot-ui';
+import { formatHumanLabel, truncateLabel } from '@/lib/iot-format';
 import { cn } from '@/lib/utils';
 import { show as alertShow } from '@/routes/alerts';
 import { index as alertsIndex } from '@/routes/alerts';
@@ -73,50 +73,53 @@ export type CameraAttention = {
     last_ingest_at: string | null;
 };
 
-const MODULE_LABEL: Record<string, string> = {
-    ppe: 'PPE',
-    vehicle_proximity: 'VEH',
-    working_at_height: 'HEIGHT',
+export type RecentAlert = {
+    id: number;
+    title: string;
+    severity: string;
+    status: string;
+    site: string | null;
+    module_key: string | null;
+    module_name: string | null;
+    opened_at: string | null;
 };
 
-const MODULE_BADGE_CLASS: Record<string, string> = {
-    ppe: 'bg-amber-500/15 text-amber-600 dark:text-amber-400',
-    vehicle_proximity: 'bg-blue-500/15 text-blue-600 dark:text-blue-400',
-    working_at_height: 'bg-violet-500/15 text-violet-600 dark:text-violet-400',
+export type AlertStatusStat = {
+    status: string;
+    count: number;
+    color: string;
 };
+
+function moduleBadgeLabel(alert: Pick<RecentAlert, 'module_key' | 'module_name' | 'severity'>): string {
+    if (alert.module_name) {
+        return truncateLabel(alert.module_name, 12);
+    }
+
+    if (alert.module_key) {
+        return truncateLabel(formatHumanLabel(alert.module_key), 12);
+    }
+
+    return alert.severity;
+}
+
+function moduleBadgeClass(moduleKey: string | null): string {
+    const palette: Record<string, string> = {
+        ppe: 'bg-amber-500/15 text-amber-600 dark:text-amber-400',
+        vehicle_proximity: 'bg-blue-500/15 text-blue-600 dark:text-blue-400',
+        working_at_height: 'bg-violet-500/15 text-violet-600 dark:text-violet-400',
+        rfid_ssms: 'bg-cyan-500/15 text-cyan-600 dark:text-cyan-400',
+        gas_monitoring: 'bg-red-500/15 text-red-600 dark:text-red-400',
+        incident_vision: 'bg-rose-500/15 text-rose-600 dark:text-rose-400',
+    };
+
+    return palette[moduleKey ?? ''] ?? 'bg-muted text-muted-foreground';
+}
 
 const CHART_TOOLTIP_STYLE = {
     borderRadius: '8px',
     border: '1px solid hsl(var(--border))',
     background: 'hsl(var(--card))',
 };
-
-function formatRelativeTime(iso: string | null): string {
-    if (iso === null) {
-        return '—';
-    }
-
-    const diffMs = Date.now() - new Date(iso).getTime();
-    const minutes = Math.floor(diffMs / 60000);
-
-    if (minutes < 1) {
-        return 'just now';
-    }
-
-    if (minutes < 60) {
-        return `${minutes}m ago`;
-    }
-
-    const hours = Math.floor(minutes / 60);
-
-    if (hours < 48) {
-        return `${hours}h ago`;
-    }
-
-    const days = Math.floor(hours / 24);
-
-    return `${days}d ago`;
-}
 
 function heatmapColor(count: number, max: number): string {
     if (count === 0) {
@@ -141,23 +144,44 @@ type AlertsByModuleChartProps = {
 };
 
 export function AlertsByModuleChart({ data }: AlertsByModuleChartProps) {
+    const chartData = data
+        .filter((row) => row.count > 0)
+        .map((row) => ({
+            ...row,
+            label: truncateLabel(row.module, 20),
+        }));
+    const total = chartData.reduce((sum, row) => sum + row.count, 0);
+
     return (
-        <ConceptTableCard title="Alerts by module" description="Last 7 days — stacked volume">
-            <div className="h-80 p-4 pt-2">
-                <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={data} margin={{ top: 12, right: 12, left: -8, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" vertical={false} />
-                        <XAxis dataKey="module" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
-                        <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
-                        <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
-                        <Bar dataKey="count" radius={[8, 8, 0, 0]} maxBarSize={56}>
-                            {data.map((entry) => (
-                                <Cell key={entry.key} fill={entry.color} />
-                            ))}
-                        </Bar>
-                    </BarChart>
-                </ResponsiveContainer>
-            </div>
+        <ConceptTableCard title="Alerts by module" description={`${total} alerts · last 7 days`}>
+            {chartData.length === 0 ? (
+                <IotEmptyState message="No alerts in the last 7 days" />
+            ) : (
+                <div className="h-52 p-3 pt-1">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={chartData} layout="vertical" margin={{ top: 4, right: 12, left: 4, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.45)" horizontal={false} />
+                            <XAxis type="number" allowDecimals={false} tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} />
+                            <YAxis
+                                type="category"
+                                dataKey="label"
+                                width={88}
+                                tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                            />
+                            <Tooltip
+                                contentStyle={CHART_TOOLTIP_STYLE}
+                                formatter={(value: number) => [value, 'Alerts']}
+                                labelFormatter={(_, payload) => payload?.[0]?.payload?.module ?? ''}
+                            />
+                            <Bar dataKey="count" radius={[0, 6, 6, 0]} maxBarSize={18}>
+                                {chartData.map((entry) => (
+                                    <Cell key={entry.key} fill={entry.color} />
+                                ))}
+                            </Bar>
+                        </BarChart>
+                    </ResponsiveContainer>
+                </div>
+            )}
         </ConceptTableCard>
     );
 }
@@ -168,45 +192,87 @@ type SeverityDonutChartProps = {
 
 export function SeverityDonutChart({ data }: SeverityDonutChartProps) {
     const total = data.reduce((sum, item) => sum + item.count, 0);
+    const active = data.filter((d) => d.count > 0);
 
     return (
-        <ConceptTableCard title="Open alerts by severity" description="Current open queue">
-            <div className="relative h-80 p-4 pt-2">
+        <ConceptTableCard title="Open by severity" description={`${total} in queue`}>
+            <div className="relative h-52 p-3 pt-1">
                 {total === 0 ? (
-                    <p className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                        No open alerts
-                    </p>
+                    <IotEmptyState message="No open alerts" />
                 ) : (
                     <>
                         <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
                                 <Pie
-                                    data={data.filter((d) => d.count > 0)}
+                                    data={active}
                                     dataKey="count"
                                     nameKey="severity"
                                     cx="50%"
-                                    cy="50%"
-                                    innerRadius={70}
-                                    outerRadius={100}
-                                    paddingAngle={3}
+                                    cy="46%"
+                                    innerRadius={52}
+                                    outerRadius={76}
+                                    paddingAngle={2}
                                     stroke="hsl(var(--card))"
                                     strokeWidth={2}
                                 >
-                                    {data.map((entry) => (
+                                    {active.map((entry) => (
                                         <Cell key={entry.severity} fill={entry.color} />
                                     ))}
                                 </Pie>
                                 <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
-                                <Legend verticalAlign="bottom" height={36} />
+                                <Legend verticalAlign="bottom" height={28} iconSize={8} wrapperStyle={{ fontSize: 11 }} />
                             </PieChart>
                         </ResponsiveContainer>
-                        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center pb-8">
-                            <span className="text-4xl font-bold tabular-nums">{total}</span>
-                            <span className="text-xs uppercase tracking-wide text-muted-foreground">open</span>
+                        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center pb-6">
+                            <span className="text-2xl font-bold tabular-nums">{total}</span>
+                            <span className="text-[10px] uppercase tracking-wide text-muted-foreground">open</span>
                         </div>
                     </>
                 )}
             </div>
+        </ConceptTableCard>
+    );
+}
+
+type AlertStatusChartProps = {
+    data: AlertStatusStat[];
+};
+
+export function AlertStatusChart({ data }: AlertStatusChartProps) {
+    const chartData = data
+        .filter((row) => row.count > 0)
+        .map((row) => ({
+            ...row,
+            label: formatHumanLabel(row.status),
+        }));
+    const total = data.reduce((sum, row) => sum + row.count, 0);
+
+    return (
+        <ConceptTableCard title="Alert workflow" description={`${total} opened · last 7 days`}>
+            {chartData.length === 0 ? (
+                <IotEmptyState message="No alert activity this week" />
+            ) : (
+                <div className="h-52 p-3 pt-1">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={chartData} layout="vertical" margin={{ top: 4, right: 12, left: 4, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.45)" horizontal={false} />
+                            <XAxis type="number" allowDecimals={false} tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} />
+                            <YAxis
+                                type="category"
+                                dataKey="label"
+                                width={88}
+                                tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                            />
+                            <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
+                            <Bar dataKey="count" radius={[0, 6, 6, 0]} maxBarSize={18}>
+                                {chartData.map((entry) => (
+                                    <Cell key={entry.status} fill={entry.color} />
+                                ))}
+                            </Bar>
+                        </BarChart>
+                    </ResponsiveContainer>
+                </div>
+            )}
         </ConceptTableCard>
     );
 }
@@ -241,22 +307,24 @@ function SiteHealthGauge({ score }: { score: number }) {
 
 export function SiteHealthScores({ sites }: SiteHealthScoresProps) {
     return (
-        <ConceptTableCard title="Site health scores" description="Composite safety index">
+        <ConceptTableCard title="Site health" description="Composite safety index · week over week">
             <ul className="divide-y">
                 {sites.length === 0 ? (
-                    <li className="p-4 text-sm text-muted-foreground">No sites in scope.</li>
+                    <li className="p-4">
+                        <IotEmptyState message="No sites in scope" />
+                    </li>
                 ) : (
                     sites.map((site) => (
-                        <li key={site.id} className="flex gap-4 p-4">
+                        <li key={site.id} className="flex gap-3 px-4 py-3">
                             <SiteHealthGauge score={site.score} />
-                            <div className="min-w-0 flex-1 space-y-2">
+                            <div className="min-w-0 flex-1 space-y-1.5">
                                 <div className="flex items-center justify-between gap-2">
-                                    <Link href={siteShow(site.id)} className="font-medium hover:underline">
+                                    <Link href={siteShow(site.id)} className="text-sm font-medium hover:underline">
                                         {site.name}
                                     </Link>
                                     <span
                                         className={cn(
-                                            'text-xs font-semibold tabular-nums',
+                                            'text-[11px] font-semibold tabular-nums',
                                             site.delta >= 0 ? 'text-emerald-600' : 'text-destructive',
                                         )}
                                     >
@@ -264,15 +332,21 @@ export function SiteHealthScores({ sites }: SiteHealthScoresProps) {
                                         {Math.abs(site.delta)}
                                     </span>
                                 </div>
-                                <div className="h-2.5 overflow-hidden rounded-full bg-muted">
+                                <div className="h-1.5 overflow-hidden rounded-full bg-muted">
                                     <div
-                                        className="h-full rounded-full bg-gradient-to-r from-primary/80 to-primary transition-all"
+                                        className={cn(
+                                            'h-full rounded-full transition-all',
+                                            site.score >= 80
+                                                ? 'bg-emerald-500'
+                                                : site.score >= 60
+                                                  ? 'bg-amber-500'
+                                                  : 'bg-destructive',
+                                        )}
                                         style={{ width: `${site.score}%` }}
                                     />
                                 </div>
-                                <p className="text-xs text-muted-foreground">
+                                <p className="text-[11px] text-muted-foreground">
                                     {site.open_alerts} open · {site.cameras_online}/{site.cameras_total} cameras
-                                    online
                                 </p>
                             </div>
                         </li>
@@ -365,10 +439,11 @@ export function TrendDualLineChart({ labels, events, acknowledged }: TrendDualLi
         events: events[index] ?? 0,
         acknowledged: acknowledged[index] ?? 0,
     }));
+    const totalEvents = events.reduce((sum, n) => sum + n, 0);
 
     return (
-        <ConceptTableCard title="Trend — events vs acknowledged" description="Last 14 days">
-            <div className="h-80 p-4 pt-2">
+        <ConceptTableCard title="Detection vs acknowledgement" description={`${totalEvents} events · 14 days`}>
+            <div className="h-52 p-3 pt-1">
                 <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={data} margin={{ top: 12, right: 16, left: -8, bottom: 0 }}>
                         <defs>
@@ -385,22 +460,22 @@ export function TrendDualLineChart({ labels, events, acknowledged }: TrendDualLi
                         <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
                         <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
                         <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
-                        <Legend />
+                        <Legend wrapperStyle={{ fontSize: 11 }} iconSize={8} />
                         <Area
                             type="monotone"
                             dataKey="events"
-                            name="Detection events"
+                            name="Events"
                             stroke="#3B82F6"
                             fill="url(#eventsGradient)"
-                            strokeWidth={2.5}
+                            strokeWidth={2}
                         />
                         <Area
                             type="monotone"
                             dataKey="acknowledged"
-                            name="Acknowledged"
+                            name="Acked"
                             stroke="#10B981"
                             fill="url(#ackGradient)"
-                            strokeWidth={2.5}
+                            strokeWidth={2}
                         />
                     </AreaChart>
                 </ResponsiveContainer>
@@ -441,13 +516,10 @@ export function CriticalAlertsStrip({ alerts }: CriticalAlertsStripProps) {
                                     <span
                                         className={cn(
                                             'rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide',
-                                            MODULE_BADGE_CLASS[alert.module_key ?? ''] ??
-                                                'bg-destructive/15 text-destructive',
+                                            moduleBadgeClass(alert.module_key),
                                         )}
                                     >
-                                        {MODULE_LABEL[alert.module_key ?? ''] ??
-                                            alert.module_name ??
-                                            alert.severity}
+                                        {moduleBadgeLabel(alert)}
                                     </span>
                                     <Link
                                         href={alertShow(alert.id)}
@@ -458,7 +530,7 @@ export function CriticalAlertsStrip({ alerts }: CriticalAlertsStripProps) {
                                 </p>
                                 <p className="truncate text-sm text-muted-foreground">
                                     {[alert.site, alert.camera].filter(Boolean).join(' · ')} ·{' '}
-                                    {formatRelativeTime(alert.opened_at)}
+                                    <IotRelativeTime iso={alert.opened_at} />
                                 </p>
                             </div>
                             <ConceptStatusBadge
@@ -499,17 +571,94 @@ export function CamerasAttentionList({ cameras }: CamerasAttentionListProps) {
                             <div className="min-w-0">
                                 <p className="font-medium">{camera.name}</p>
                                 <p className="text-sm text-muted-foreground">
-                                    {camera.site} · last ingest {formatRelativeTime(camera.last_ingest_at)}
+                                    {camera.site} · last ingest <IotRelativeTime iso={camera.last_ingest_at} />
                                 </p>
                             </div>
-                            <ConceptStatusBadge
-                                tone={camera.health_status === 'offline' ? 'danger' : 'warning'}
-                            >
-                                {camera.health_status}
-                            </ConceptStatusBadge>
+                            <IotHealthBadge status={camera.health_status} />
                         </li>
                     ))}
                 </ul>
+            )}
+        </ConceptTableCard>
+    );
+}
+
+type RecentAlertsTableProps = {
+    alerts: RecentAlert[];
+};
+
+export function RecentAlertsTable({ alerts }: RecentAlertsTableProps) {
+    return (
+        <ConceptTableCard title="Recent alerts" description="Latest activity across modules">
+            <div className="flex items-center justify-end border-b border-border/60 px-4 py-2">
+                <Link href={alertsIndex()} className="text-xs font-medium text-primary hover:underline">
+                    View all →
+                </Link>
+            </div>
+            {alerts.length === 0 ? (
+                <IotEmptyState message="No alerts recorded yet" />
+            ) : (
+                <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                        <thead>
+                            <tr className="border-b bg-muted/30">
+                                <th className="px-3 py-2 text-left font-medium text-muted-foreground">Alert</th>
+                                <th className="px-3 py-2 text-left font-medium text-muted-foreground">Module</th>
+                                <th className="px-3 py-2 text-left font-medium text-muted-foreground">Severity</th>
+                                <th className="px-3 py-2 text-left font-medium text-muted-foreground">Status</th>
+                                <th className="px-3 py-2 text-left font-medium text-muted-foreground">When</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                            {alerts.map((alert) => (
+                                <tr key={alert.id} className="hover:bg-muted/20">
+                                    <td className="max-w-[14rem] px-3 py-2">
+                                        <Link
+                                            href={alertShow(alert.id)}
+                                            className="line-clamp-1 font-medium hover:underline"
+                                        >
+                                            {alert.title}
+                                        </Link>
+                                        {alert.site ? (
+                                            <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                                                {alert.site}
+                                            </p>
+                                        ) : null}
+                                    </td>
+                                    <td className="px-3 py-2">
+                                        <span
+                                            className={cn(
+                                                'inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase',
+                                                moduleBadgeClass(alert.module_key),
+                                            )}
+                                        >
+                                            {moduleBadgeLabel(alert)}
+                                        </span>
+                                    </td>
+                                    <td className="px-3 py-2">
+                                        <ConceptStatusBadge
+                                            tone={
+                                                alert.severity === 'critical'
+                                                    ? 'danger'
+                                                    : alert.severity === 'high'
+                                                      ? 'warning'
+                                                      : 'muted'
+                                            }
+                                        >
+                                            {alert.severity}
+                                        </ConceptStatusBadge>
+                                    </td>
+                                    <td className="px-3 py-2">
+                                        <IotHealthBadge status={alert.status} />
+                                    </td>
+                                    <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">
+                                        <IotRelativeTime iso={alert.opened_at} />
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
             )}
         </ConceptTableCard>
     );

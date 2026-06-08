@@ -6,10 +6,13 @@ use App\Http\Requests\CreateInvestigationFromAlertRequest;
 use App\Http\Requests\LinkAlertInvestigationRequest;
 use App\Models\Alert;
 use App\Models\AlertAction;
+use App\Models\HseIncident;
 use App\Models\Investigation;
 use App\Models\User;
 use App\Support\MediaObjectUrl;
 use App\Support\SelectedSiteManager;
+use App\Support\SiteGuardEnums;
+use App\Support\SiteRuleResolver;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
@@ -26,6 +29,7 @@ class AlertController extends Controller implements HasMiddleware
             new Middleware('permission:alerts.acknowledge', only: ['acknowledge']),
             new Middleware('permission:alerts.dismiss', only: ['dismiss']),
             new Middleware('permission:investigations.manage', only: ['createInvestigation', 'linkInvestigation']),
+            new Middleware('permission:hse_incidents.classify', only: ['createHseIncident']),
         ];
     }
 
@@ -59,6 +63,7 @@ class AlertController extends Controller implements HasMiddleware
             'filters' => [
                 'status' => $request->string('status')->toString(),
             ],
+            'statusOptions' => SiteGuardEnums::options('alert_statuses'),
         ]);
     }
 
@@ -82,8 +87,18 @@ class AlertController extends Controller implements HasMiddleware
             ->orderByDesc('opened_at')
             ->get(['id', 'title']);
 
+        $linkedHseIncident = HseIncident::query()
+            ->where('site_id', $alert->site_id)
+            ->whereJsonContains('alert_ids', $alert->id)
+            ->first(['id', 'incident_number', 'status']);
+
         return Inertia::render('alerts/show', [
             'alert' => $this->formatAlertDetail($alert),
+            'linkedHseIncident' => $linkedHseIncident ? [
+                'id' => $linkedHseIncident->id,
+                'incident_number' => $linkedHseIncident->incident_number,
+                'status' => $linkedHseIncident->status,
+            ] : null,
             'actions' => $alert->actions->map(fn (AlertAction $action): array => [
                 'id' => $action->id,
                 'action' => $action->action,
@@ -96,6 +111,7 @@ class AlertController extends Controller implements HasMiddleware
                 'canAcknowledge' => $request->user()?->can('alerts.acknowledge') ?? false,
                 'canDismiss' => $request->user()?->can('alerts.dismiss') ?? false,
                 'canManageInvestigations' => $request->user()?->can('investigations.manage') ?? false,
+                'canCreateHseIncident' => $request->user()?->can('hse_incidents.classify') ?? false,
             ],
             'users' => User::query()->orderBy('name')->get(['id', 'name']),
             'openInvestigations' => $openInvestigations->map(fn (Investigation $inv): array => [
@@ -206,6 +222,44 @@ class AlertController extends Controller implements HasMiddleware
         ]);
 
         return to_route('alerts.show', $alert);
+    }
+
+    public function createHseIncident(Request $request, Alert $alert): RedirectResponse
+    {
+        $this->ensureSiteAccess($request, $alert->site_id);
+
+        $existing = HseIncident::query()
+            ->where('site_id', $alert->site_id)
+            ->whereJsonContains('alert_ids', $alert->id)
+            ->first();
+
+        if ($existing !== null) {
+            Inertia::flash('toast', [
+                'type' => 'success',
+                'message' => __('HSE incident already linked to this alert.'),
+            ]);
+
+            return to_route('iot.hse-incidents.show', $existing);
+        }
+
+        $alert->loadMissing('rule');
+        $incidentType = SiteRuleResolver::incidentTypeFor($alert->rule);
+
+        $incident = HseIncidentController::createDraftFromAlert(
+            $alert->site_id,
+            $incidentType,
+            $alert->title,
+            $alert->id,
+            $alert->metadata['rfid_zone_id'] ?? null,
+            $alert->camera_id,
+        );
+
+        Inertia::flash('toast', [
+            'type' => 'success',
+            'message' => __('HSE incident draft created.'),
+        ]);
+
+        return to_route('iot.hse-incidents.show', $incident);
     }
 
     /**

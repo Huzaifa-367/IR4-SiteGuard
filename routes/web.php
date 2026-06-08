@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\EquipmentScanController;
 use App\Http\Controllers\Settings\RoleController;
 use App\Http\Controllers\Settings\UserRoleController;
 use Illuminate\Support\Facades\Auth;
@@ -10,6 +11,10 @@ Route::get('/', function () {
         ? redirect()->route('dashboard')
         : redirect()->route('login');
 })->name('home');
+
+Route::get('equipment/{qr_slug}', [EquipmentScanController::class, 'show'])
+    ->middleware('throttle:60,1')
+    ->name('equipment.scan');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('user-roles', [UserRoleController::class, 'index'])

@@ -26,6 +26,7 @@ class Alert extends Model
         'opened_at',
         'closed_at',
         'assigned_user_id',
+        'metadata',
     ];
 
     /**
@@ -36,6 +37,7 @@ class Alert extends Model
         return [
             'opened_at' => 'datetime',
             'closed_at' => 'datetime',
+            'metadata' => 'array',
         ];
     }
 

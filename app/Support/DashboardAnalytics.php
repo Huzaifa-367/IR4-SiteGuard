@@ -7,6 +7,9 @@ use App\Models\AlertAction;
 use App\Models\Camera;
 use App\Models\DetectionEvent;
 use App\Models\DetectionModule;
+use App\Models\HseIncident;
+use App\Models\Investigation;
+use App\Models\LsrViolationLog;
 use App\Models\Site;
 use App\Models\User;
 use Carbon\CarbonInterface;
@@ -18,6 +21,10 @@ use Illuminate\Support\Facades\DB;
 
 class DashboardAnalytics
 {
+    public function __construct(
+        private readonly IotAnalytics $iotAnalytics,
+    ) {}
+
     /**
      * @return Collection<int, int>
      */
@@ -59,6 +66,10 @@ class DashboardAnalytics
             'alertHeatmap' => $this->alertHeatmap($siteIds, $now),
             'camerasNeedingAttention' => $this->camerasNeedingAttention($siteIds),
             'trend' => $this->trend($siteIds, $now),
+            'recentAlerts' => $this->recentAlerts($siteIds),
+            'alertStatusBreakdown' => $this->alertStatusBreakdown($siteIds, $now),
+            'operationsPulse' => $this->operationsPulse($siteIds, $user),
+            'iot' => $this->iotAnalytics->dashboardSnapshot($siteIds, $user),
         ];
     }
 
@@ -171,6 +182,115 @@ class DashboardAnalytics
                 'sparkline' => $this->dailyEventCounts($siteIds, $now, 14),
             ],
         ];
+    }
+
+    /**
+     * @param  Collection<int, int>  $siteIds
+     * @return array<int, array<string, mixed>>
+     */
+    private function recentAlerts(Collection $siteIds): array
+    {
+        return $this->alertsQuery($siteIds)
+            ->with(['site:id,name', 'detectionModule:id,key,name'])
+            ->latest('opened_at')
+            ->limit(10)
+            ->get()
+            ->map(fn (Alert $alert): array => [
+                'id' => $alert->id,
+                'title' => $alert->title,
+                'severity' => $alert->severity,
+                'status' => $alert->status,
+                'site' => $alert->site?->name,
+                'module_key' => $alert->detectionModule?->key,
+                'module_name' => $alert->detectionModule?->name,
+                'opened_at' => $alert->opened_at?->toIso8601String(),
+            ])
+            ->all();
+    }
+
+    /**
+     * @param  Collection<int, int>  $siteIds
+     * @return array<int, array{status: string, count: int, color: string}>
+     */
+    private function alertStatusBreakdown(Collection $siteIds, CarbonInterface $now): array
+    {
+        $since = $now->copy()->subDays(7);
+        $counts = $this->alertsQuery($siteIds)
+            ->where('opened_at', '>=', $since)
+            ->select('status', DB::raw('count(*) as total'))
+            ->groupBy('status')
+            ->pluck('total', 'status');
+
+        $order = ['open', 'acknowledged', 'closed', 'dismissed'];
+
+        return collect($order)->map(fn (string $status): array => [
+            'status' => $status,
+            'count' => (int) ($counts[$status] ?? 0),
+            'color' => $this->statusColor($status),
+        ])->all();
+    }
+
+    /**
+     * @param  Collection<int, int>  $siteIds
+     * @return array<int, array{key: string, label: string, value: int|string, hint: string}>
+     */
+    private function operationsPulse(Collection $siteIds, ?User $user): array
+    {
+        $items = [
+            [
+                'key' => 'open_alerts',
+                'label' => 'Open alerts',
+                'value' => $this->alertsQuery($siteIds)->where('status', 'open')->count(),
+                'hint' => 'Awaiting triage',
+            ],
+        ];
+
+        if ($user?->can('investigations.manage')) {
+            $items[] = [
+                'key' => 'investigations',
+                'label' => 'Investigations',
+                'value' => Investigation::query()
+                    ->when($siteIds->isNotEmpty(), fn (Builder $q) => $q->whereIn('site_id', $siteIds))
+                    ->where('status', 'open')
+                    ->count(),
+                'hint' => 'Active cases',
+            ];
+        }
+
+        if ($user?->can('hse_incidents.view')) {
+            $items[] = [
+                'key' => 'hse_pending',
+                'label' => 'HSE pending',
+                'value' => HseIncident::query()
+                    ->when($siteIds->isNotEmpty(), fn (Builder $q) => $q->whereIn('site_id', $siteIds))
+                    ->whereIn('status', ['draft', 'pending_classification'])
+                    ->count(),
+                'hint' => 'Needs classification',
+            ];
+        }
+
+        if ($user?->can('lsr.view')) {
+            $items[] = [
+                'key' => 'lsr_open',
+                'label' => 'LSR follow-up',
+                'value' => LsrViolationLog::query()
+                    ->when($siteIds->isNotEmpty(), fn (Builder $q) => $q->whereIn('site_id', $siteIds))
+                    ->whereNull('actions_taken')
+                    ->count(),
+                'hint' => 'Missing corrective actions',
+            ];
+        }
+
+        if ($user?->can('reports.export')) {
+            $items[] = [
+                'key' => 'reports',
+                'label' => 'Reports',
+                'value' => '→',
+                'hint' => 'UDPM & compliance exports',
+            ];
+        }
+
+        return $items;
     }
 
     /**
@@ -582,6 +702,10 @@ class DashboardAnalytics
             'ppe' => '#F59E0B',
             'vehicle_proximity' => '#3B82F6',
             'working_at_height' => '#8B5CF6',
+            'rfid_ssms' => '#06B6D4',
+            'gas_monitoring' => '#EF4444',
+            'environmental' => '#22C55E',
+            'incident_vision' => '#DC2626',
             default => '#64748B',
         };
     }
@@ -593,6 +717,17 @@ class DashboardAnalytics
             'high' => '#F97316',
             'medium' => '#EAB308',
             default => '#64748B',
+        };
+    }
+
+    private function statusColor(string $status): string
+    {
+        return match ($status) {
+            'open' => '#F97316',
+            'acknowledged' => '#3B82F6',
+            'closed' => '#10B981',
+            'dismissed' => '#64748B',
+            default => '#94A3B8',
         };
     }
 }

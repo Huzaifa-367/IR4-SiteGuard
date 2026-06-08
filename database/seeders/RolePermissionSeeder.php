@@ -42,8 +42,8 @@ class RolePermissionSeeder extends Seeder
         $superAdmin->syncPermissions($all);
 
         $this->upsertRole('hse_manager', 'HSE manager with site operations and alert handling.', array_merge(
-            PermissionRegistry::forGroups(['sites', 'locations', 'modules', 'cameras', 'zones', 'alerts', 'investigations', 'ai', 'users', 'reports']),
-            ['sites.access_all'],
+            PermissionRegistry::forGroups(['sites', 'locations', 'modules', 'cameras', 'zones', 'alerts', 'investigations', 'ai', 'users', 'reports', 'rfid', 'gas_environmental', 'equipment', 'hse_lsr', 'udpm']),
+            ['sites.access_all', 'alerts.acknowledge', 'alerts.dismiss', 'alerts.assign'],
         ));
 
         $this->upsertRole('site_supervisor', 'Supervisor for assigned sites.', array_merge(
@@ -61,6 +61,60 @@ class RolePermissionSeeder extends Seeder
             'alerts.view',
             'reports.export',
         ]);
+
+        $this->upsertRole('scc_operator', 'SCC operator — live monitoring and alert response.', array_merge(
+            PermissionRegistry::forGroups(['sites', 'modules', 'cameras', 'zones', 'alerts']),
+            [
+                'rfid.view',
+                'gate_log.view',
+                'workers.view',
+                'portable_devices.manage',
+                'gas.view',
+                'environmental.view',
+                'equipment.view',
+                'hse_incidents.view',
+                'lsr.view',
+                'lsr.actions_update',
+                'evacuation.generate',
+                'alerts.acknowledge',
+                'alerts.dismiss',
+            ],
+        ));
+
+        $this->upsertRole('safety_manager', 'Safety manager — full SCC operations and UDPM approval.', array_merge(
+            PermissionRegistry::forGroups(['sites', 'locations', 'modules', 'cameras', 'zones', 'alerts', 'investigations', 'rfid', 'gas_environmental', 'equipment', 'hse_lsr', 'udpm', 'reports']),
+            ['sites.access_all'],
+        ));
+
+        $this->upsertRole('project_manager', 'Project manager — read-only summaries and UDPM view.', [
+            'sites.view',
+            'rfid.view',
+            'gas.view',
+            'environmental.view',
+            'udpm.view',
+            'reports.export',
+        ]);
+
+        $this->upsertRole('sa_representative', 'Saudi Aramco representative — read-only, audited access.', [
+            'sites.view',
+            'modules.view',
+            'cameras.view',
+            'rules.view',
+            'alerts.view',
+            'rfid.view',
+            'workers.view',
+            'gate_log.view',
+            'gas.view',
+            'environmental.view',
+            'equipment.view',
+            'hse_incidents.view',
+            'lsr.view',
+            'udpm.view',
+        ]);
+
+        $this->upsertRole('site_staff', 'Site staff — equipment QR scan only.', [
+            'equipment.view',
+        ]);
     }
 
     /**
@@ -68,8 +122,8 @@ class RolePermissionSeeder extends Seeder
      */
     private function upsertRole(string $name, string $description, array $permissions): void
     {
-            $role = Role::firstOrCreate(
-                ['name' => $name, 'guard_name' => 'web'],
+        $role = Role::firstOrCreate(
+            ['name' => $name, 'guard_name' => 'web'],
             ['description' => $description, 'is_system' => false],
         );
 

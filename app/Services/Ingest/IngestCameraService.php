@@ -30,14 +30,13 @@ class IngestCameraService
         }
 
         $cameraId = (int) $validated['camera_id'];
-
-        if ((int) $token->camera_id !== $cameraId) {
-            throw ValidationException::withMessages(['camera_id' => ['Token is not valid for this camera.']]);
-        }
-
         $camera = Camera::query()
             ->with(['site', 'zones' => fn ($q) => $q->where('is_active', true), 'zones.rules', 'detectionModule'])
             ->findOrFail($cameraId);
+
+        if (! $this->tokens->matchesTokenable($token, $camera)) {
+            throw ValidationException::withMessages(['camera_id' => ['Token is not valid for this camera.']]);
+        }
 
         if (! $camera->is_active) {
             throw ValidationException::withMessages(['camera_id' => ['Camera is inactive.']]);
@@ -72,6 +71,7 @@ class IngestCameraService
                     'bbox' => $detection['bbox'],
                     'zone_ids' => $this->resolveZoneIds($camera, $detection['bbox']),
                     'extras' => isset($detection['distance_m']) ? ['distance_m' => $detection['distance_m']] : null,
+                    'assurance_tier' => 'inferred',
                     'snapshot_media_id' => $snapshotMedia->id,
                 ]);
                 $detectionCount++;

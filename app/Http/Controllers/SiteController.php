@@ -6,6 +6,7 @@ use App\Http\Requests\StoreSiteRequest;
 use App\Http\Requests\UpdateSiteRequest;
 use App\Models\DetectionModule;
 use App\Models\Site;
+use App\Support\DefaultSiteRules;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
@@ -52,12 +53,17 @@ class SiteController extends Controller implements HasMiddleware
 
     public function store(StoreSiteRequest $request): RedirectResponse
     {
-        $site = Site::query()->create($request->validated());
+        $site = Site::query()->create([
+            ...$request->validated(),
+            'settings' => config('siteguard.site_defaults'),
+        ]);
 
         $moduleIds = DetectionModule::query()->pluck('id');
         $site->detectionModules()->sync(
             $moduleIds->mapWithKeys(fn (int $id): array => [$id => ['is_enabled' => true]])->all(),
         );
+
+        DefaultSiteRules::seedFor($site);
 
         Inertia::flash('toast', [
             'type' => 'success',
@@ -78,7 +84,7 @@ class SiteController extends Controller implements HasMiddleware
         return Inertia::render('sites/show', [
             'site' => $this->presentSiteDetail($site),
             'cameras' => $site->cameras()
-                ->with(['detectionModule:id,name,key', 'ingestToken:id,camera_id,token_prefix,revoked_at,last_used_at'])
+                ->with(['detectionModule:id,name,key', 'ingestToken:id,tokenable_type,tokenable_id,token_prefix,revoked_at,last_used_at'])
                 ->orderBy('sort_order')
                 ->get()
                 ->map(fn ($camera): array => [

@@ -3,8 +3,13 @@
 namespace App\Services\Ingest;
 
 use App\Models\Camera;
+use App\Models\EdgeDevice;
+use App\Models\GasGateway;
 use App\Models\IngestApiToken;
+use App\Models\RfidReader;
+use App\Models\SensorDevice;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
 class IngestTokenService
@@ -12,13 +17,16 @@ class IngestTokenService
     /**
      * @return array{token: IngestApiToken, plain_text: string}
      */
-    public function issueForCamera(Camera $camera, ?User $issuer = null, ?string $name = null): array
+    public function issueFor(Model $tokenable, ?User $issuer = null, ?string $name = null): array
     {
-        $plain = config('siteguard.ingest_token_prefix').Str::random(48);
+        $plain = $this->prefixFor($tokenable).Str::random(48);
         $prefix = substr($plain, 0, 8);
 
         $token = IngestApiToken::query()->updateOrCreate(
-            ['camera_id' => $camera->id],
+            [
+                'tokenable_type' => $tokenable->getMorphClass(),
+                'tokenable_id' => $tokenable->getKey(),
+            ],
             [
                 'name' => $name,
                 'token_hash' => hash('sha256', $plain),
@@ -32,6 +40,14 @@ class IngestTokenService
         return ['token' => $token, 'plain_text' => $plain];
     }
 
+    /**
+     * @return array{token: IngestApiToken, plain_text: string}
+     */
+    public function issueForCamera(Camera $camera, ?User $issuer = null, ?string $name = null): array
+    {
+        return $this->issueFor($camera, $issuer, $name);
+    }
+
     public function findByBearer(string $bearer): ?IngestApiToken
     {
         $hash = hash('sha256', $bearer);
@@ -43,5 +59,25 @@ class IngestTokenService
                 $query->whereNull('expires_at')->orWhere('expires_at', '>', now());
             })
             ->first();
+    }
+
+    public function matchesTokenable(IngestApiToken $token, Model $expected): bool
+    {
+        return $token->tokenable_type === $expected->getMorphClass()
+            && (int) $token->tokenable_id === (int) $expected->getKey();
+    }
+
+    private function prefixFor(Model $tokenable): string
+    {
+        $prefixes = config('siteguard.ingest_token_prefixes', []);
+
+        return match ($tokenable::class) {
+            Camera::class => $prefixes['camera'] ?? 'sgcam_',
+            RfidReader::class => $prefixes['rfid_reader'] ?? 'sgrfid_',
+            SensorDevice::class => $prefixes['sensor_device'] ?? 'sgsensor_',
+            GasGateway::class => $prefixes['gas_gateway'] ?? 'sggas_',
+            EdgeDevice::class => $prefixes['edge_device'] ?? 'sgedge_',
+            default => 'sgingest_',
+        };
     }
 }

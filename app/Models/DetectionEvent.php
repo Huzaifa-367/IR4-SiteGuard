@@ -25,6 +25,7 @@ class DetectionEvent extends Model
         'model_name',
         'model_version',
         'extras',
+        'assurance_tier',
         'snapshot_media_id',
         'clip_media_id',
     ];
