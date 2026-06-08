@@ -13,7 +13,7 @@ import { useSiteContext } from '@/hooks/use-site-context';
 import HseIncidentController from '@/actions/App/Http/Controllers/HseIncidentController';
 import { show as alertShow } from '@/routes/alerts';
 import { index as hseRegisterIndex } from '@/routes/iot/hse-incidents/register';
-import { overview as rfidOverview } from '@/routes/iot/rfid';
+import { show as zoneShow } from '@/routes/iot/rfid/zones';
 
 type LinkedAlert = {
     id: number;
@@ -127,7 +127,7 @@ export default function HseIncidentShow({
                             {rfidZone ? (
                                 <p className="text-muted-foreground">
                                     RFID zone:{' '}
-                                    <Link href={rfidOverview()} className="text-primary hover:underline">
+                                    <Link href={zoneShow(rfidZone.id)} className="text-primary hover:underline">
                                         {rfidZone.name} ({rfidZone.code})
                                     </Link>
                                 </p>

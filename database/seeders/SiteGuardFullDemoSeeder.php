@@ -19,6 +19,7 @@ use App\Models\User;
 use App\Models\Zone;
 use App\Services\Ingest\IngestTokenService;
 use Carbon\CarbonInterface;
+use Database\Seeders\Support\IotScenarioCatalog;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
@@ -45,35 +46,18 @@ class SiteGuardFullDemoSeeder extends Seeder
         $hse = User::query()->where('email', 'hse@siteguard.test')->first();
         $supervisor = User::query()->where('email', 'supervisor@siteguard.test')->first();
 
-        $sites = [
-            [
-                'code' => 'DEMO-01',
-                'name' => 'Riverside Tower — Demo',
-                'timezone' => 'Asia/Dubai',
-                'address' => 'Plot 12, Riverside Industrial Zone',
-                'map_center_lat' => 25.2048,
-                'map_center_lng' => 55.2708,
-                'volume' => 1.0,
+        $sites = array_map(
+            fn (array $def): array => [
+                'code' => $def['code'],
+                'name' => $def['name'],
+                'timezone' => $def['timezone'],
+                'address' => $def['address'],
+                'map_center_lat' => $def['lat'],
+                'map_center_lng' => $def['lng'],
+                'volume' => $def['scale'],
             ],
-            [
-                'code' => 'NORTH-02',
-                'name' => 'North Tower Phase 2',
-                'timezone' => 'Asia/Dubai',
-                'address' => 'North Tower construction zone',
-                'map_center_lat' => 25.2100,
-                'map_center_lng' => 55.2750,
-                'volume' => 1.2,
-            ],
-            [
-                'code' => 'WEST-03',
-                'name' => 'West Yard Logistics',
-                'timezone' => 'Asia/Riyadh',
-                'address' => 'West yard, heavy equipment zone',
-                'map_center_lat' => 24.7136,
-                'map_center_lng' => 46.6753,
-                'volume' => 0.85,
-            ],
-        ];
+            IotScenarioCatalog::sites(),
+        );
 
         foreach ($sites as $siteData) {
             $this->seedSite($siteData, $modules, $admin, $hse, $supervisor);
@@ -116,8 +100,11 @@ class SiteGuardFullDemoSeeder extends Seeder
         if ($hse !== null) {
             $site->users()->syncWithoutDetaching([$hse->id => ['is_primary' => false]]);
         }
-        if ($supervisor !== null && $siteData['code'] === 'DEMO-01') {
-            $site->users()->syncWithoutDetaching([$supervisor->id => ['is_primary' => true]]);
+        if ($admin !== null) {
+            $site->users()->syncWithoutDetaching([$admin->id => ['is_primary' => false]]);
+        }
+        if ($supervisor !== null) {
+            $site->users()->syncWithoutDetaching([$supervisor->id => ['is_primary' => false]]);
         }
 
         $entrance = SiteLocation::query()->firstOrCreate(
@@ -150,8 +137,8 @@ class SiteGuardFullDemoSeeder extends Seeder
             $cameras[] = $this->seedCamera($site, $vehicle, $entrance, 'YARD-01', 'Yard — vehicles', 'online', 5);
         }
         if ($height !== null) {
-            $health = $siteData['code'] === 'WEST-03' ? 'offline' : 'degraded';
-            $ingestMinutes = $siteData['code'] === 'WEST-03' ? 60 * 26 : 120;
+            $health = $siteData['code'] === 'STCF' ? 'offline' : 'degraded';
+            $ingestMinutes = $siteData['code'] === 'STCF' ? 60 * 26 : 120;
             $cameras[] = $this->seedCamera($site, $height, $entrance, 'SCAF-01', 'Scaffold level 3', $health, $ingestMinutes);
         }
 

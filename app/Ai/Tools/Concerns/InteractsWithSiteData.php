@@ -4,6 +4,7 @@ namespace App\Ai\Tools\Concerns;
 
 use App\Models\Site;
 use App\Support\SiteGuardAiDataService;
+use App\Support\SiteGuardAiIotDataService;
 
 trait InteractsWithSiteData
 {
@@ -11,10 +12,13 @@ trait InteractsWithSiteData
 
     protected SiteGuardAiDataService $data;
 
+    protected SiteGuardAiIotDataService $iot;
+
     public function __construct(Site $site)
     {
         $this->site = $site;
         $this->data = new SiteGuardAiDataService($site);
+        $this->iot = new SiteGuardAiIotDataService($site);
     }
 
     public function name(): string

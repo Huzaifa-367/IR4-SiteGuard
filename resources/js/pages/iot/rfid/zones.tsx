@@ -1,11 +1,15 @@
-import { Form, Head } from '@inertiajs/react';
+import { Form, Head, Link } from '@inertiajs/react';
 import { Plus } from 'lucide-react';
 import { useState } from 'react';
 import {
     ConceptPageHeader,
     ConceptPageShell,
+    ConceptPagination,
     ConceptTableCard,
+    TimeRangeSelect,
+    type TimeRangeFilters,
 } from '@/components/concepts';
+import type { Paginator } from '@/types/pagination';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import {
@@ -28,13 +32,14 @@ import {
 import { useSiteContext } from '@/hooks/use-site-context';
 import RfidOperationsController from '@/actions/App/Http/Controllers/RfidOperationsController';
 import { overview as rfidOverview } from '@/routes/iot/rfid';
-import { index as zonesIndex } from '@/routes/iot/rfid/zones';
+import { index as zonesIndex, show as zoneShow } from '@/routes/iot/rfid/zones';
+import { IotViewLink } from '@/components/iot/iot-module-layout';
 import { IotUtilizationBar } from '@/components/iot/iot-ui';
 import { EnumSelect, type EnumOption } from '@/components/siteguard/enum-select';
 
 type Props = {
     site: { id: number; name: string };
-    zones: {
+    zones: Paginator<{
         id: number;
         name: string;
         code: string;
@@ -42,12 +47,13 @@ type Props = {
         max_occupancy: number | null;
         on_site_count: number;
         readers_count: number;
-    }[];
+    }>;
+    filters: TimeRangeFilters;
     permissions: { canManageZones: boolean };
     zoneTypeOptions: EnumOption[];
 };
 
-export default function RfidZones({ site, zones, permissions, zoneTypeOptions }: Props) {
+export default function RfidZones({ site, zones, filters, permissions, zoneTypeOptions }: Props) {
     const { selectedSite } = useSiteContext();
     const siteName = selectedSite?.name ?? site.name;
     const [zoneOpen, setZoneOpen] = useState(false);
@@ -58,8 +64,10 @@ export default function RfidZones({ site, zones, permissions, zoneTypeOptions }:
             <ConceptPageShell>
                 <ConceptPageHeader
                     title="Zone occupancy"
-                    description={`RFID zones and reader coverage for ${siteName}`}
-                />
+                    description={`${zones.total.toLocaleString()} zones in ${filters.label.toLowerCase()} — ${siteName}`}
+                >
+                    <TimeRangeSelect filters={filters} />
+                </ConceptPageHeader>
 
                 <ConceptTableCard>
                     <div className="flex items-center justify-between border-b p-4">
@@ -103,13 +111,16 @@ export default function RfidZones({ site, zones, permissions, zoneTypeOptions }:
                                 <TableHead>Type</TableHead>
                                 <TableHead>Utilization</TableHead>
                                 <TableHead className="text-center">Readers</TableHead>
+                                <TableHead />
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {zones.map((z) => (
+                            {zones.data.map((z) => (
                                 <TableRow key={z.id}>
                                     <TableCell>
-                                        <p className="font-medium">{z.name}</p>
+                                        <Link href={zoneShow(z.id)} className="font-medium text-primary hover:underline">
+                                            {z.name}
+                                        </Link>
                                         <p className="font-mono text-[10px] text-muted-foreground">{z.code}</p>
                                     </TableCell>
                                     <TableCell className="text-xs">{z.zone_type.replace(/_/g, ' ')}</TableCell>
@@ -125,10 +136,16 @@ export default function RfidZones({ site, zones, permissions, zoneTypeOptions }:
                                         />
                                     </TableCell>
                                     <TableCell className="tabular-nums text-center">{z.readers_count}</TableCell>
+                                    <TableCell className="text-right">
+                                        <IotViewLink href={zoneShow(z.id)} />
+                                    </TableCell>
                                 </TableRow>
                             ))}
                         </TableBody>
                     </Table>
+                    <div className="px-4 pb-4">
+                        <ConceptPagination links={zones.links} />
+                    </div>
                 </ConceptTableCard>
             </ConceptPageShell>
         </>

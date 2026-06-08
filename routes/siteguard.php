@@ -80,10 +80,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
             Route::get('rfid', [RfidOperationsController::class, 'overview'])->name('rfid.overview');
             Route::get('rfid/zones', [RfidOperationsController::class, 'zones'])->name('rfid.zones.index');
+            Route::get('rfid/zones/{zone}', [RfidOperationsController::class, 'showZone'])->name('rfid.zones.show');
             Route::get('rfid/workers', [RfidOperationsController::class, 'workers'])->name('rfid.workers.index');
+            Route::get('rfid/workers/{worker}', [RfidOperationsController::class, 'showWorker'])->name('rfid.workers.show');
             Route::get('rfid/portable-devices', [RfidOperationsController::class, 'portableDevices'])->name('rfid.portable-devices.index');
             Route::get('rfid/personnel', [RfidOperationsController::class, 'personnel'])->name('rfid.personnel.index');
             Route::get('rfid/gate-log', [RfidOperationsController::class, 'gateLog'])->name('rfid.gate-log.index');
+            Route::get('rfid/gate-log/{log}', [RfidOperationsController::class, 'showGateLog'])->name('rfid.gate-log.show');
             Route::get('rfid/evacuations', [RfidOperationsController::class, 'evacuations'])->name('rfid.evacuations.index');
             Route::post('rfid/workers', [RfidOperationsController::class, 'storeWorker'])->name('rfid.workers.store');
             Route::patch('rfid/workers/{worker}/portable-devices', [RfidOperationsController::class, 'updatePortableDevices'])
@@ -130,6 +133,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::get('lsr', [LsrViolationController::class, 'overview'])->name('lsr.overview');
             Route::get('lsr/violations', [LsrViolationController::class, 'violations'])->name('lsr.violations.index');
             Route::get('lsr/vehicle-violations', [LsrViolationController::class, 'vehicleViolations'])->name('lsr.vehicle-violations.index');
+            Route::get('lsr/vehicle-violations/{vehicleViolation}', [LsrViolationController::class, 'showVehicleViolation'])
+                ->name('lsr.vehicle-violations.show');
             Route::get('lsr/{violation}', [LsrViolationController::class, 'show'])->name('lsr.show');
             Route::post('lsr', [LsrViolationController::class, 'store'])->name('lsr.store');
             Route::patch('lsr/{violation}/actions', [LsrViolationController::class, 'updateActions'])

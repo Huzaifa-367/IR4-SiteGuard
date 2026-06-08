@@ -10,7 +10,10 @@ import { IotViewLink } from '@/components/iot/iot-module-layout';
 import {
     ConceptPageHeader,
     ConceptPageShell,
+    TimeRangeSelect,
+    type TimeRangeFilters,
 } from '@/components/concepts';
+import type { Paginator } from '@/types/pagination';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import {
@@ -32,13 +35,14 @@ import { EnumSelect, type EnumOption } from '@/components/siteguard/enum-select'
 
 type Props = {
     site: { id: number; name: string };
-    devices: DeviceRow[];
+    devices: Paginator<DeviceRow>;
+    filters: TimeRangeFilters;
     ingestTokenPlain: string | null;
     permissions: { canManage: boolean; canManageTokens: boolean };
     mountTypeOptions: EnumOption[];
 };
 
-export default function FieldDevicesEdge({ site, devices, ingestTokenPlain, permissions, mountTypeOptions }: Props) {
+export default function FieldDevicesEdge({ site, devices, filters, ingestTokenPlain, permissions, mountTypeOptions }: Props) {
     const { selectedSite } = useSiteContext();
     const siteName = selectedSite?.name ?? site.name;
     const [edgeOpen, setEdgeOpen] = useState(false);
@@ -49,8 +53,10 @@ export default function FieldDevicesEdge({ site, devices, ingestTokenPlain, perm
             <ConceptPageShell>
                 <ConceptPageHeader
                     title="Edge devices"
-                    description={`Jetson / vehicle / pole compute units for ${siteName}`}
-                />
+                    description={`${devices.total.toLocaleString()} devices in ${filters.label.toLowerCase()} — ${siteName}`}
+                >
+                    <TimeRangeSelect filters={filters} />
+                </ConceptPageHeader>
 
                 {ingestTokenPlain ? (
                     <div className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4">

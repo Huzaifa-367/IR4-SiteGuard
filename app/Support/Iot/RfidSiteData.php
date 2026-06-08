@@ -8,12 +8,13 @@ use App\Models\RfidTagLastSeen;
 use App\Models\Site;
 use App\Models\WorkerRecord;
 use App\Support\SiteGuardEnums;
-use Illuminate\Support\Carbon;
+use Carbon\CarbonInterface;
+
 class RfidSiteData
 {
-    private Carbon $staleThreshold;
+    private CarbonInterface $staleThreshold;
 
-    private Carbon $stationaryThreshold;
+    private CarbonInterface $stationaryThreshold;
 
     public function __construct(private readonly Site $site)
     {
@@ -131,6 +132,7 @@ class RfidSiteData
             ->map(fn (GateEntryExitLog $log): array => [
                 'id' => $log->id,
                 'tag_epc' => $log->tag_epc,
+                'worker_id' => $log->worker_record_id,
                 'worker' => $log->worker?->full_name,
                 'direction' => $log->direction,
                 'occurred_at' => $log->occurred_at->toIso8601String(),
@@ -183,16 +185,18 @@ class RfidSiteData
     /**
      * @return array<string, mixed>
      */
-    private function presentOnSitePerson(RfidTagLastSeen $row): array
+    public function presentOnSitePerson(RfidTagLastSeen $row): array
     {
         $isStale = $row->last_seen_at < $this->staleThreshold;
         $isStationary = $row->stationary_since !== null && $row->stationary_since <= $this->stationaryThreshold;
 
         return [
             'tag_epc' => $row->tag_epc,
+            'worker_id' => $row->worker_record_id,
             'worker' => $row->worker?->full_name,
             'contractor' => $row->worker?->contractor,
             'role' => $row->worker?->role,
+            'zone_id' => $row->rfid_zone_id,
             'zone' => $row->rfidZone?->name,
             'last_seen_at' => $row->last_seen_at->toIso8601String(),
             'is_stale' => $isStale,

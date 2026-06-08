@@ -10,6 +10,7 @@ use App\Models\HseIncident;
 use App\Models\RfidZone;
 use App\Models\Site;
 use App\Services\Reports\UdpmWeeklyReportService;
+use App\Support\Iot\IotTimeRange;
 use App\Support\IotAnalytics;
 use App\Support\SiteGuardEnums;
 use Illuminate\Http\RedirectResponse;
@@ -35,15 +36,22 @@ class HseIncidentController extends Controller implements HasMiddleware
     {
         $site = $this->selectedSite($request);
 
+        $selectedDays = IotTimeRange::chartDaysFromRequest($request);
+        $chartDays = IotTimeRange::effectiveChartDays($selectedDays);
+
+        $incidentQuery = HseIncident::query()->where('site_id', $site->id);
+        IotTimeRange::applySince($incidentQuery, 'occurred_at', $selectedDays);
+
         return Inertia::render('iot/hse-incidents/overview', [
             'site' => ['id' => $site->id, 'name' => $site->name],
             'summary' => [
-                'total' => HseIncident::query()->where('site_id', $site->id)->count(),
-                'pending' => HseIncident::query()->where('site_id', $site->id)->whereIn('status', ['draft', 'pending_classification'])->count(),
-                'classified' => HseIncident::query()->where('site_id', $site->id)->where('status', 'classified')->count(),
-                'critical' => HseIncident::query()->where('site_id', $site->id)->where('severity', 'critical')->count(),
+                'total' => (clone $incidentQuery)->count(),
+                'pending' => (clone $incidentQuery)->whereIn('status', ['draft', 'pending_classification'])->count(),
+                'classified' => (clone $incidentQuery)->where('status', 'classified')->count(),
+                'critical' => (clone $incidentQuery)->where('severity', 'critical')->count(),
             ],
-            'analytics' => $iotAnalytics->hsePageAnalytics($site->id),
+            'analytics' => $iotAnalytics->hsePageAnalytics($site->id, $chartDays, $selectedDays),
+            'filters' => IotTimeRange::chartFilters($request),
         ]);
     }
 
@@ -51,21 +59,30 @@ class HseIncidentController extends Controller implements HasMiddleware
     {
         $site = $this->selectedSite($request);
 
+        $listDays = IotTimeRange::listDaysFromRequest($request);
+
+        $incidentQuery = HseIncident::query()
+            ->where('site_id', $site->id)
+            ->orderByDesc('occurred_at');
+
+        IotTimeRange::applySince($incidentQuery, 'occurred_at', $listDays);
+
+        $incidents = $incidentQuery
+            ->paginate(IotTimeRange::perPage())
+            ->withQueryString()
+            ->through(fn (HseIncident $incident): array => [
+                'id' => $incident->id,
+                'incident_number' => $incident->incident_number,
+                'status' => $incident->status,
+                'severity' => $incident->severity,
+                'incident_type' => $incident->incident_type,
+                'occurred_at' => $incident->occurred_at->toIso8601String(),
+            ]);
+
         return Inertia::render('iot/hse-incidents/register', [
             'site' => ['id' => $site->id, 'name' => $site->name],
-            'incidents' => HseIncident::query()
-                ->where('site_id', $site->id)
-                ->orderByDesc('occurred_at')
-                ->limit(100)
-                ->get()
-                ->map(fn (HseIncident $incident): array => [
-                    'id' => $incident->id,
-                    'incident_number' => $incident->incident_number,
-                    'status' => $incident->status,
-                    'severity' => $incident->severity,
-                    'incident_type' => $incident->incident_type,
-                    'occurred_at' => $incident->occurred_at->toIso8601String(),
-                ]),
+            'incidents' => $incidents,
+            'filters' => IotTimeRange::listFilters($request),
             'permissions' => [
                 'canClassify' => $request->user()?->can('hse_incidents.classify') ?? false,
             ],

@@ -4,6 +4,13 @@ export { ConceptPageHeader } from './concept-page-header';
 export { ConceptPageShell } from './concept-page-shell';
 export { ConceptPagination } from './concept-pagination';
 export type { ConceptPaginationLink } from './concept-pagination';
+export {
+    IotTimeRangeSelect,
+    IotTimeRangeSelect as TimeRangeSelect,
+    iotChartRangeLabel,
+    type IotTimeRangeFilters,
+    type IotTimeRangeFilters as TimeRangeFilters,
+} from '@/components/iot/iot-time-range-select';
 export { ConceptStatTiles } from './concept-stat-tiles';
 export type { ConceptStatTile } from './concept-stat-tiles';
 export { ConceptStatusBadge, toneForStatus } from './concept-status-badge';

@@ -9,12 +9,17 @@ use App\Http\Requests\StoreRfidReaderRequest;
 use App\Http\Requests\StoreSensorDeviceRequest;
 use App\Models\EdgeDevice;
 use App\Models\GasGateway;
+use App\Models\GasReading;
 use App\Models\RfidReader;
 use App\Models\RfidZone;
 use App\Models\SensorDevice;
+use App\Models\SensorReading;
 use App\Services\Ingest\IngestTokenService;
+use App\Support\Iot\IotTimeRange;
 use App\Support\IotAnalytics;
 use App\Support\SiteGuardEnums;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
@@ -41,9 +46,12 @@ class FieldDeviceController extends Controller implements HasMiddleware
     {
         $site = $this->selectedSite($request);
 
+        $chartDays = IotTimeRange::effectiveChartDays(IotTimeRange::chartDaysFromRequest($request));
+
         return Inertia::render('iot/field-devices/overview', [
             'site' => ['id' => $site->id, 'name' => $site->name],
-            'analytics' => $iotAnalytics->fieldDevicesAnalytics($site->id),
+            'analytics' => $iotAnalytics->fieldDevicesAnalytics($site->id, $chartDays),
+            'filters' => IotTimeRange::chartFilters($request),
         ]);
     }
 
@@ -52,12 +60,15 @@ class FieldDeviceController extends Controller implements HasMiddleware
         $site = $this->selectedSite($request);
 
         return Inertia::render('iot/field-devices/edge', $this->listPageProps($request, $site, [
-            'devices' => EdgeDevice::query()
-                ->where('site_id', $site->id)
-                ->with('ingestToken:tokenable_type,tokenable_id,token_prefix,revoked_at,last_used_at')
-                ->orderBy('code')
-                ->get()
-                ->map(fn (EdgeDevice $d): array => $this->presentEdge($d)),
+            'devices' => $this->paginateDevices(
+                $request,
+                EdgeDevice::query()
+                    ->where('site_id', $site->id)
+                    ->with('ingestToken:tokenable_type,tokenable_id,token_prefix,revoked_at,last_used_at')
+                    ->orderBy('code'),
+                'last_heartbeat_at',
+                fn (EdgeDevice $d): array => $this->presentEdge($d),
+            ),
             'mountTypeOptions' => SiteGuardEnums::options('mount_types'),
         ]));
     }
@@ -67,12 +78,15 @@ class FieldDeviceController extends Controller implements HasMiddleware
         $site = $this->selectedSite($request);
 
         return Inertia::render('iot/field-devices/rfid-readers', $this->listPageProps($request, $site, [
-            'devices' => RfidReader::query()
-                ->where('site_id', $site->id)
-                ->with(['rfidZone:id,name,code', 'ingestToken:tokenable_type,tokenable_id,token_prefix,revoked_at,last_used_at'])
-                ->orderBy('code')
-                ->get()
-                ->map(fn (RfidReader $r): array => $this->presentReader($r)),
+            'devices' => $this->paginateDevices(
+                $request,
+                RfidReader::query()
+                    ->where('site_id', $site->id)
+                    ->with(['rfidZone:id,name,code', 'ingestToken:tokenable_type,tokenable_id,token_prefix,revoked_at,last_used_at'])
+                    ->orderBy('code'),
+                'last_ingest_at',
+                fn (RfidReader $r): array => $this->presentReader($r),
+            ),
             'rfidZones' => RfidZone::query()
                 ->where('site_id', $site->id)
                 ->where('is_active', true)
@@ -87,12 +101,15 @@ class FieldDeviceController extends Controller implements HasMiddleware
         $site = $this->selectedSite($request);
 
         return Inertia::render('iot/field-devices/gas-gateways', $this->listPageProps($request, $site, [
-            'devices' => GasGateway::query()
-                ->where('site_id', $site->id)
-                ->with('ingestToken:tokenable_type,tokenable_id,token_prefix,revoked_at,last_used_at')
-                ->orderBy('code')
-                ->get()
-                ->map(fn (GasGateway $g): array => $this->presentGasGateway($g)),
+            'devices' => $this->paginateDevices(
+                $request,
+                GasGateway::query()
+                    ->where('site_id', $site->id)
+                    ->with('ingestToken:tokenable_type,tokenable_id,token_prefix,revoked_at,last_used_at')
+                    ->orderBy('code'),
+                'last_ingest_at',
+                fn (GasGateway $g): array => $this->presentGasGateway($g),
+            ),
             'edgeOptions' => EdgeDevice::query()
                 ->where('site_id', $site->id)
                 ->orderBy('code')
@@ -105,12 +122,15 @@ class FieldDeviceController extends Controller implements HasMiddleware
         $site = $this->selectedSite($request);
 
         return Inertia::render('iot/field-devices/sensors', $this->listPageProps($request, $site, [
-            'devices' => SensorDevice::query()
-                ->where('site_id', $site->id)
-                ->with('ingestToken:tokenable_type,tokenable_id,token_prefix,revoked_at,last_used_at')
-                ->orderBy('code')
-                ->get()
-                ->map(fn (SensorDevice $s): array => $this->presentSensor($s)),
+            'devices' => $this->paginateDevices(
+                $request,
+                SensorDevice::query()
+                    ->where('site_id', $site->id)
+                    ->with('ingestToken:tokenable_type,tokenable_id,token_prefix,revoked_at,last_used_at')
+                    ->orderBy('code'),
+                'last_ingest_at',
+                fn (SensorDevice $s): array => $this->presentSensor($s),
+            ),
             'sensorDeviceTypeOptions' => SiteGuardEnums::options('sensor_device_types'),
         ]));
     }
@@ -122,12 +142,29 @@ class FieldDeviceController extends Controller implements HasMiddleware
     {
         return array_merge([
             'site' => ['id' => $site->id, 'name' => $site->name],
+            'filters' => IotTimeRange::listFilters($request),
             'ingestTokenPlain' => $request->session()->pull('ingest_token_plain'),
             'permissions' => [
                 'canManage' => ($request->user()?->can('rfid_zones.manage') || $request->user()?->can('sensors.manage')) ?? false,
                 'canManageTokens' => $request->user()?->can('api_tokens.manage') ?? false,
             ],
         ], $extra);
+    }
+
+    /**
+     * @template TModel of \Illuminate\Database\Eloquent\Model
+     *
+     * @param  Builder<TModel>  $query
+     * @param  callable(TModel): array<string, mixed>  $present
+     */
+    private function paginateDevices(Request $request, Builder $query, string $activityColumn, callable $present): LengthAwarePaginator
+    {
+        IotTimeRange::applySince($query, $activityColumn, IotTimeRange::listDaysFromRequest($request));
+
+        return $query
+            ->paginate(IotTimeRange::perPage())
+            ->withQueryString()
+            ->through($present);
     }
 
     public function show(Request $request, string $type, int $id): Response
@@ -170,10 +207,41 @@ class FieldDeviceController extends Controller implements HasMiddleware
             default => [],
         };
 
+        $recentReadings = match ($type) {
+            'gas' => GasReading::query()
+                ->where('gas_gateway_id', $device->id)
+                ->orderByDesc('read_at')
+                ->limit(20)
+                ->get()
+                ->map(fn (GasReading $reading): array => [
+                    'lel_pct' => $reading->lel_pct,
+                    'o2_pct' => $reading->o2_pct,
+                    'h2s_ppm' => $reading->h2s_ppm,
+                    'co_ppm' => $reading->co_ppm,
+                    'alarm_state' => $reading->alarm_state,
+                    'read_at' => $reading->read_at->toIso8601String(),
+                ])
+                ->all(),
+            'sensor' => SensorReading::query()
+                ->where('sensor_device_id', $device->id)
+                ->orderByDesc('read_at')
+                ->limit(20)
+                ->get()
+                ->map(fn (SensorReading $reading): array => [
+                    'parameter' => $reading->parameter,
+                    'value' => $reading->value,
+                    'unit' => $reading->unit,
+                    'read_at' => $reading->read_at->toIso8601String(),
+                ])
+                ->all(),
+            default => [],
+        };
+
         return Inertia::render('iot/field-device-show', [
             'site' => ['id' => $site->id, 'name' => $site->name],
             'deviceType' => $type,
             'device' => $presented,
+            'recentReadings' => $recentReadings,
             'permissions' => [
                 'canManageTokens' => $request->user()?->can('api_tokens.manage') ?? false,
             ],
@@ -271,7 +339,9 @@ class FieldDeviceController extends Controller implements HasMiddleware
             'name' => $r->name,
             'code' => $r->code,
             'mount_type' => $r->mount_type,
+            'rfid_zone_id' => $r->rfid_zone_id,
             'zone' => $r->rfidZone?->name,
+            'zone_code' => $r->rfidZone?->code,
             'health_status' => $r->health_status,
             'last_ingest_at' => $r->last_ingest_at?->toIso8601String(),
             'ingest_token' => $this->presentToken($r),

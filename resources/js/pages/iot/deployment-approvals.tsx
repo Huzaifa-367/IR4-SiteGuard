@@ -1,7 +1,15 @@
 import { Form, Head } from '@inertiajs/react';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { IotModuleSection, IotViewLink } from '@/components/iot/iot-module-layout';
-import { ConceptPageHeader, ConceptPageShell, ConceptTableCard } from '@/components/concepts';
+import {
+    ConceptPageHeader,
+    ConceptPageShell,
+    ConceptPagination,
+    ConceptTableCard,
+    TimeRangeSelect,
+    type TimeRangeFilters,
+} from '@/components/concepts';
+import type { Paginator } from '@/types/pagination';
 import { IotSectionTabs } from '@/components/iot/iot-ui';
 import { EnumSelect } from '@/components/siteguard/enum-select';
 import { show as deploymentApprovalShow } from '@/routes/iot/deployment-approvals';
@@ -35,45 +43,27 @@ type ApprovalRow = {
 
 type Props = {
     site: { id: number; name: string };
-    approvals: ApprovalRow[];
+    approvals: Paginator<ApprovalRow>;
+    filters: TimeRangeFilters;
+    summary: { total: number; submitted: number; approved: number };
+    analytics: { byStatus: { label: string; count: number }[]; byType: { label: string; count: number }[] };
     commissioning_gate: string;
     approval_types: { value: string; label: string }[];
 };
 
-function countBy<T>(items: T[], keyFn: (item: T) => string): { label: string; count: number }[] {
-    const map = new Map<string, number>();
-
-    for (const item of items) {
-        const key = keyFn(item);
-        map.set(key, (map.get(key) ?? 0) + 1);
-    }
-
-    return [...map.entries()]
-        .map(([label, count]) => ({ label: formatHumanLabel(label), count }))
-        .sort((a, b) => b.count - a.count);
-}
-
 export default function DeploymentApprovals({
     site,
     approvals,
+    filters,
+    summary,
+    analytics,
     commissioning_gate,
     approval_types,
 }: Props) {
     const { selectedSite } = useSiteContext();
     const siteName = selectedSite?.name ?? site.name;
 
-    const submitted = approvals.filter((row) => row.status === 'submitted').length;
-    const approved = approvals.filter((row) => row.status === 'approved').length;
-
     const [tab, setTab] = useState('overview');
-
-    const analytics = useMemo(
-        () => ({
-            byStatus: countBy(approvals, (row) => row.status),
-            byType: countBy(approvals, (row) => row.approval_type),
-        }),
-        [approvals],
-    );
 
     return (
         <>
@@ -81,15 +71,17 @@ export default function DeploymentApprovals({
             <ConceptPageShell>
                 <ConceptPageHeader
                     title="SA deployment approvals"
-                    description={`Commissioning gate: ${formatHumanLabel(commissioning_gate)} · ${siteName}`}
-                />
+                    description={`${summary.total.toLocaleString()} in ${filters.label.toLowerCase()} · ${siteName}`}
+                >
+                    <TimeRangeSelect filters={filters} />
+                </ConceptPageHeader>
 
                 <IotKpiStrip
                     className="mb-4"
                     kpis={[
-                        { key: 'register', label: 'Register', value: approvals.length, hint: 'All submissions' },
-                        { key: 'submitted', label: 'Submitted', value: submitted, hint: 'Awaiting review' },
-                        { key: 'approved', label: 'Approved', value: approved, hint: 'Signed off' },
+                        { key: 'register', label: 'Register', value: summary.total, hint: 'All submissions' },
+                        { key: 'submitted', label: 'Submitted', value: summary.submitted, hint: 'Awaiting review' },
+                        { key: 'approved', label: 'Approved', value: summary.approved, hint: 'Signed off' },
                         {
                             key: 'gate',
                             label: 'Gate',
@@ -105,7 +97,7 @@ export default function DeploymentApprovals({
                     onChange={setTab}
                     items={[
                         { key: 'overview', label: 'Overview' },
-                        { key: 'register', label: 'Register', count: approvals.length },
+                        { key: 'register', label: 'Register', count: summary.total },
                         { key: 'submit', label: 'Submit new' },
                     ]}
                 />
@@ -115,13 +107,19 @@ export default function DeploymentApprovals({
                         <div className="grid gap-3 lg:grid-cols-2">
                             <HorizontalCategoryChart
                                 title="By approval type"
-                                data={analytics.byType}
+                                data={analytics.byType.map((row) => ({
+                                    ...row,
+                                    label: formatHumanLabel(row.label),
+                                }))}
                                 valueLabel="Submissions"
                             />
                             {analytics.byStatus.length > 0 ? (
                                 <HorizontalCategoryChart
                                     title="By status"
-                                    data={analytics.byStatus}
+                                    data={analytics.byStatus.map((row) => ({
+                                        ...row,
+                                        label: formatHumanLabel(row.label),
+                                    }))}
                                     valueLabel="Records"
                                 />
                             ) : null}
@@ -174,9 +172,9 @@ export default function DeploymentApprovals({
                 <ConceptTableCard>
                     <div className="border-b px-4 py-3">
                         <h2 className="text-sm font-semibold">Approval register</h2>
-                        <p className="text-xs text-muted-foreground">{approvals.length} records</p>
+                        <p className="text-xs text-muted-foreground">{summary.total.toLocaleString()} records</p>
                     </div>
-                    {approvals.length === 0 ? (
+                    {approvals.data.length === 0 ? (
                         <IotEmptyState message="No deployment approvals submitted yet" />
                     ) : (
                         <div className="overflow-x-auto">
@@ -192,7 +190,7 @@ export default function DeploymentApprovals({
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {approvals.map((row) => (
+                                    {approvals.data.map((row) => (
                                         <TableRow key={row.id}>
                                             <TableCell className="text-sm">
                                                 {formatHumanLabel(row.approval_type)}
@@ -238,6 +236,9 @@ export default function DeploymentApprovals({
                             </Table>
                         </div>
                     )}
+                    <div className="px-4 pb-4">
+                        <ConceptPagination links={approvals.links} />
+                    </div>
                 </ConceptTableCard>
                 ) : null}
             </ConceptPageShell>

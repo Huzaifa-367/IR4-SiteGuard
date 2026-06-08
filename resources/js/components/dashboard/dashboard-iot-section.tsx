@@ -40,9 +40,10 @@ export type IotDashboardSnapshot = {
 
 type DashboardIotSectionProps = {
     iot: IotDashboardSnapshot;
+    rangeLabel?: string;
 };
 
-export function DashboardIotSection({ iot }: DashboardIotSectionProps) {
+export function DashboardIotSection({ iot, rangeLabel = '90 days' }: DashboardIotSectionProps) {
     const hasGas = iot.gasTrend !== null || iot.co2Trend !== null;
     const hasRfid = iot.gateFlow !== null;
 
@@ -85,7 +86,7 @@ export function DashboardIotSection({ iot }: DashboardIotSectionProps) {
 
             <div className="grid gap-3 lg:grid-cols-2">
                 {iot.gateFlow ? (
-                    <GateFlowChart data={iot.gateFlow} title="Gate flow — 7 days" />
+                    <GateFlowChart data={iot.gateFlow} title={`Gate flow — ${rangeLabel}`} />
                 ) : null}
                 {iot.zoneOccupancy.length > 0 ? (
                     <ZoneOccupancyChart data={iot.zoneOccupancy} />
@@ -100,7 +101,7 @@ export function DashboardIotSection({ iot }: DashboardIotSectionProps) {
             <div className="grid gap-3 lg:grid-cols-2">
                 <DeviceHealthChart data={iot.deviceHealth} />
                 {iot.activeAlarms.length > 0 || hasGas ? (
-                    <IotActiveAlarmsList alarms={iot.activeAlarms} gasHref={gasIndex()} />
+                    <IotActiveAlarmsList alarms={iot.activeAlarms} gasHref={gasOverview()} />
                 ) : null}
             </div>
         </div>

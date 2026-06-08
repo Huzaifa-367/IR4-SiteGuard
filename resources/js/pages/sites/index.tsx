@@ -4,8 +4,10 @@ import { useEffect, useState } from 'react';
 import {
     ConceptPageHeader,
     ConceptPageShell,
+    ConceptPagination,
     ConceptTableCard,
 } from '@/components/concepts';
+import type { Paginator } from '@/types/pagination';
 import { ConceptStatusBadge } from '@/components/concepts/concept-status-badge';
 import SiteFormDialog from '@/components/siteguard/site-form-dialog';
 import { Button } from '@/components/ui/button';
@@ -31,7 +33,7 @@ type SiteRow = {
 };
 
 type SitesIndexProps = {
-    sites: SiteRow[];
+    sites: Paginator<SiteRow>;
     canCreate: boolean;
     timezones: string[];
     openCreateDialog?: boolean;
@@ -81,14 +83,14 @@ export default function SitesIndex({
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {sites.length === 0 ? (
+                                {sites.data.length === 0 ? (
                                     <TableRow>
                                         <TableCell colSpan={5} className="text-muted-foreground">
                                             No sites yet.
                                         </TableCell>
                                     </TableRow>
                                 ) : (
-                                    sites.map((site) => (
+                                    sites.data.map((site) => (
                                         <TableRow key={site.id}>
                                             <TableCell>
                                                 <Link
@@ -121,6 +123,9 @@ export default function SitesIndex({
                                 )}
                             </TableBody>
                         </Table>
+                    </div>
+                    <div className="px-4 pb-4">
+                        <ConceptPagination links={sites.links} />
                     </div>
                 </ConceptTableCard>
             </ConceptPageShell>

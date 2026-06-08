@@ -10,7 +10,10 @@ import { IotViewLink } from '@/components/iot/iot-module-layout';
 import {
     ConceptPageHeader,
     ConceptPageShell,
+    TimeRangeSelect,
+    type TimeRangeFilters,
 } from '@/components/concepts';
+import type { Paginator } from '@/types/pagination';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import {
@@ -32,7 +35,8 @@ import { EnumSelect, type EnumOption } from '@/components/siteguard/enum-select'
 
 type Props = {
     site: { id: number; name: string };
-    devices: DeviceRow[];
+    devices: Paginator<DeviceRow>;
+    filters: TimeRangeFilters;
     rfidZones: { id: number; name: string; code: string; zone_type: string }[];
     ingestTokenPlain: string | null;
     permissions: { canManage: boolean; canManageTokens: boolean };
@@ -42,6 +46,7 @@ type Props = {
 export default function FieldDevicesRfidReaders({
     site,
     devices,
+    filters,
     rfidZones,
     ingestTokenPlain,
     permissions,
@@ -57,8 +62,10 @@ export default function FieldDevicesRfidReaders({
             <ConceptPageShell>
                 <ConceptPageHeader
                     title="RFID readers"
-                    description={`Gate and zone antennas for ${siteName}`}
-                />
+                    description={`${devices.total.toLocaleString()} readers in ${filters.label.toLowerCase()} — ${siteName}`}
+                >
+                    <TimeRangeSelect filters={filters} />
+                </ConceptPageHeader>
 
                 {ingestTokenPlain ? (
                     <div className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4">

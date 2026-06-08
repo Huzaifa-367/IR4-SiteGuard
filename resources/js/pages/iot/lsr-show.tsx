@@ -16,7 +16,9 @@ import { useSiteContext } from '@/hooks/use-site-context';
 import LsrViolationController from '@/actions/App/Http/Controllers/LsrViolationController';
 import { show as alertShow } from '@/routes/alerts';
 import { overview as lsrOverview, show as lsrShow } from '@/routes/iot/lsr';
-import { overview as rfidOverview } from '@/routes/iot/rfid';
+import { show as workerShow } from '@/routes/iot/rfid/workers';
+import { show as zoneShow } from '@/routes/iot/rfid/zones';
+import { IotViewLink } from '@/components/iot/iot-module-layout';
 
 type Props = {
     site: { id: number; name: string };
@@ -138,14 +140,14 @@ export default function LsrViolationShow({
                         {rfidZone ? (
                             <IotLinkedResource
                                 label="RFID zone"
-                                href={rfidOverview()}
+                                href={zoneShow(rfidZone.id)}
                                 hint={`${rfidZone.name} (${rfidZone.code})`}
                             />
                         ) : null}
                         {camera ? (
                             <IotLinkedResource
                                 label="Camera"
-                                href={alert ? alertShow(alert.id) : lsrIndex()}
+                                href={alert ? alertShow(alert.id) : lsrOverview()}
                                 hint={camera.name}
                             />
                         ) : null}
@@ -160,6 +162,7 @@ export default function LsrViolationShow({
                                     <th className="px-4 py-2 font-medium">Name</th>
                                     <th className="px-4 py-2 font-medium">Contractor</th>
                                     <th className="px-4 py-2 font-medium">Role</th>
+                                    <th className="px-4 py-2 font-medium" />
                                 </tr>
                             </thead>
                             <tbody>
@@ -168,6 +171,9 @@ export default function LsrViolationShow({
                                         <td className="px-4 py-2">{w.full_name}</td>
                                         <td className="px-4 py-2">{w.contractor}</td>
                                         <td className="px-4 py-2">{w.role}</td>
+                                        <td className="px-4 py-2 text-right">
+                                            <IotViewLink href={workerShow(w.id)} />
+                                        </td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -179,9 +185,9 @@ export default function LsrViolationShow({
     );
 }
 
-LsrViolationShow.layout = (page: { props: Props }) => ({
+LsrViolationShow.layout = (props: Props) => ({
     breadcrumbs: [
         { title: 'LSR log', href: lsrOverview() },
-        { title: page.props.violation.lsr_category, href: lsrShow(page.props.violation.id) },
+        { title: props.violation.lsr_category, href: lsrShow(props.violation.id) },
     ],
 });

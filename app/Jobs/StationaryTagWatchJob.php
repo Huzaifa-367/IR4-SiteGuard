@@ -8,9 +8,9 @@ use App\Models\RfidTagLastSeen;
 use App\Services\Rfid\VisionRfidCorrelationService;
 use App\Support\LsrAutoLog;
 use App\Support\SiteRuleResolver;
+use DateTimeInterface;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
-use Illuminate\Support\Carbon;
 
 class StationaryTagWatchJob implements ShouldQueue
 {
@@ -71,8 +71,8 @@ class StationaryTagWatchJob implements ShouldQueue
                     'tag_epc' => $tag->tag_epc,
                     'worker_record_id' => $tag->worker_record_id,
                     'rfid_zone_id' => $tag->rfid_zone_id,
-                    'stationary_since' => $tag->stationary_since instanceof Carbon
-                        ? $tag->stationary_since->toIso8601String()
+                    'stationary_since' => $tag->stationary_since instanceof DateTimeInterface
+                        ? $tag->stationary_since->format(DateTimeInterface::ATOM)
                         : $tag->stationary_since,
                 ],
             ]);

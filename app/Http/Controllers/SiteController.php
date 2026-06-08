@@ -7,6 +7,7 @@ use App\Http\Requests\UpdateSiteRequest;
 use App\Models\DetectionModule;
 use App\Models\Site;
 use App\Support\DefaultSiteRules;
+use App\Support\Iot\IotTimeRange;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
@@ -38,8 +39,13 @@ class SiteController extends Controller implements HasMiddleware
             $query->whereIn('id', $user->sites()->pluck('sites.id'));
         }
 
+        $sites = $query
+            ->paginate(IotTimeRange::perPage())
+            ->withQueryString()
+            ->through(fn (Site $site): array => $this->presentSiteListRow($site));
+
         return Inertia::render('sites/index', [
-            'sites' => $query->get()->map(fn (Site $site): array => $this->presentSiteListRow($site)),
+            'sites' => $sites,
             'canCreate' => $user?->can('sites.create') ?? false,
             'timezones' => $this->commonTimezones(),
             'openCreateDialog' => $request->boolean('create'),

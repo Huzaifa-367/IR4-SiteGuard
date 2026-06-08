@@ -8,6 +8,7 @@ use App\Models\AiMessage;
 use App\Models\AiSession;
 use App\Models\Setting;
 use App\Support\AiEnrichmentNormalizer;
+use App\Support\Iot\IotTimeRange;
 use App\Support\PlatformAiConfig;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -52,22 +53,30 @@ class AiSessionController extends Controller implements HasMiddleware
         $site = $this->selectedSite($request);
         $user = $request->user();
 
-        $sessions = AiSession::query()
+        $listDays = IotTimeRange::listDaysFromRequest($request);
+
+        $sessionQuery = AiSession::query()
             ->where('site_id', $site->id)
             ->where('user_id', $user?->id)
-            ->latest('last_message_at')
-            ->limit(20)
-            ->get()
-            ->map(fn (AiSession $session): array => [
+            ->latest('last_message_at');
+
+        IotTimeRange::applySince($sessionQuery, 'last_message_at', $listDays);
+
+        $sessions = $sessionQuery
+            ->paginate(IotTimeRange::perPage())
+            ->withQueryString()
+            ->through(fn (AiSession $session): array => [
                 'id' => $session->id,
                 'title' => $session->title,
                 'last_message_at' => $session->last_message_at?->toIso8601String(),
             ]);
 
-        $activeSession = $sessions->first()
+        $sessionItems = $sessions->items();
+        $activeSessionId = $sessionItems[0]['id'] ?? null;
+        $activeSession = $activeSessionId
             ? AiSession::query()
                 ->with(['messages' => fn ($q) => $q->orderBy('id')])
-                ->find($sessions->first()['id'])
+                ->find($activeSessionId)
             : null;
 
         return Inertia::render('ai/index', [
@@ -75,6 +84,7 @@ class AiSessionController extends Controller implements HasMiddleware
             'aiEnabled' => (bool) Setting::getValue('ai_enabled', true),
             'aiConfigured' => PlatformAiConfig::isConfigured(),
             'sessions' => $sessions,
+            'filters' => IotTimeRange::listFilters($request),
             'messages' => $activeSession?->messages
                 ->map(fn (AiMessage $m): array => $this->formatMessage($m))
                 ->all() ?? [],

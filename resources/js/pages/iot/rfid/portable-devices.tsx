@@ -1,10 +1,14 @@
-import { Form, Head } from '@inertiajs/react';
+import { Form, Head, Link } from '@inertiajs/react';
 import { useState } from 'react';
 import {
     ConceptPageHeader,
     ConceptPageShell,
+    ConceptPagination,
     ConceptTableCard,
+    TimeRangeSelect,
+    type TimeRangeFilters,
 } from '@/components/concepts';
+import type { Paginator } from '@/types/pagination';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -27,23 +31,26 @@ import { useSiteContext } from '@/hooks/use-site-context';
 import RfidOperationsController from '@/actions/App/Http/Controllers/RfidOperationsController';
 import { overview as rfidOverview } from '@/routes/iot/rfid';
 import { index as portableDevicesIndex } from '@/routes/iot/rfid/portable-devices';
+import { show as workerShow } from '@/routes/iot/rfid/workers';
+import { IotViewLink } from '@/components/iot/iot-module-layout';
 import { IotHealthBadge } from '@/components/iot/iot-ui';
 import { EnumSelect, type EnumOption } from '@/components/siteguard/enum-select';
 
 type Props = {
     site: { id: number; name: string };
-    portableRegister: {
+    portableRegister: Paginator<{
         id: number;
         full_name: string;
         contractor: string;
         portable_device_approved: boolean;
         portable_devices: { type: string; serial?: string; approved_at?: string }[];
-    }[];
+    }>;
+    filters: TimeRangeFilters;
     permissions: { canManageWorkers: boolean };
     portableDeviceTypeOptions: EnumOption[];
 };
 
-export default function RfidPortableDevices({ site, portableRegister, permissions, portableDeviceTypeOptions }: Props) {
+export default function RfidPortableDevices({ site, portableRegister, filters, permissions, portableDeviceTypeOptions }: Props) {
     const { selectedSite } = useSiteContext();
     const siteName = selectedSite?.name ?? site.name;
     const [portableOpen, setPortableOpen] = useState<number | null>(null);
@@ -54,8 +61,10 @@ export default function RfidPortableDevices({ site, portableRegister, permission
             <ConceptPageShell>
                 <ConceptPageHeader
                     title="Portable device register"
-                    description={`SA Restriction of Portable Devices GI compliance for ${siteName}`}
-                />
+                    description={`${portableRegister.total.toLocaleString()} workers in ${filters.label.toLowerCase()} — ${siteName}`}
+                >
+                    <TimeRangeSelect filters={filters} />
+                </ConceptPageHeader>
 
                 <ConceptTableCard>
                     <div className="border-b p-4">
@@ -73,9 +82,13 @@ export default function RfidPortableDevices({ site, portableRegister, permission
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {portableRegister.map((w) => (
+                            {portableRegister.data.map((w) => (
                                 <TableRow key={w.id}>
-                                    <TableCell>{w.full_name}</TableCell>
+                                    <TableCell>
+                                        <Link href={workerShow(w.id)} className="font-medium text-primary hover:underline">
+                                            {w.full_name}
+                                        </Link>
+                                    </TableCell>
                                     <TableCell>{w.contractor}</TableCell>
                                     <TableCell>
                                         <IotHealthBadge status={w.portable_device_approved ? 'approved' : 'pending'} />
@@ -85,7 +98,8 @@ export default function RfidPortableDevices({ site, portableRegister, permission
                                             ? w.portable_devices.map((d) => d.type).join(', ')
                                             : '—'}
                                     </TableCell>
-                                    <TableCell>
+                                    <TableCell className="flex items-center justify-end gap-2">
+                                        <IotViewLink href={workerShow(w.id)} />
                                         {permissions.canManageWorkers ? (
                                             <Dialog open={portableOpen === w.id} onOpenChange={(o) => setPortableOpen(o ? w.id : null)}>
                                                 <DialogTrigger asChild>
@@ -132,6 +146,9 @@ export default function RfidPortableDevices({ site, portableRegister, permission
                             ))}
                         </TableBody>
                     </Table>
+                    <div className="px-4 pb-4">
+                        <ConceptPagination links={portableRegister.links} />
+                    </div>
                 </ConceptTableCard>
             </ConceptPageShell>
         </>

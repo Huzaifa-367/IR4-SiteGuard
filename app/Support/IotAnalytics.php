@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\EdgeDevice;
 use App\Models\EquipmentAsset;
+use App\Models\EquipmentInspection;
 use App\Models\GasGateway;
 use App\Models\GasReading;
 use App\Models\GateEntryExitLog;
@@ -19,6 +20,8 @@ use App\Models\Site;
 use App\Models\UdpmWeeklyReport;
 use App\Models\User;
 use App\Models\WorkerRecord;
+use App\Support\Iot\IotTimeRange;
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
@@ -28,7 +31,7 @@ class IotAnalytics
      * @param  Collection<int, int>  $siteIds
      * @return array<string, mixed>|null
      */
-    public function dashboardSnapshot(Collection $siteIds, ?User $user): ?array
+    public function dashboardSnapshot(Collection $siteIds, ?User $user, int $chartDays = 90): ?array
     {
         if ($siteIds->isEmpty() || $user === null) {
             return null;
@@ -45,55 +48,64 @@ class IotAnalytics
             'kpis' => $this->kpis($siteIds, $canRfid, $canGas),
             'gasTrend' => $canGas ? $this->gasTrend($siteIds, 24) : null,
             'co2Trend' => $canGas ? $this->co2Trend($siteIds, 24) : null,
-            'gateFlow' => $canRfid ? $this->gateFlow($siteIds, 7) : null,
+            'gateFlow' => $canRfid ? $this->gateFlow($siteIds, $chartDays) : null,
             'zoneOccupancy' => $canRfid ? $this->zoneOccupancy($siteIds) : null,
             'deviceHealth' => $this->deviceHealthBreakdown($siteIds),
             'activeAlarms' => $canGas ? $this->activeAlarms($siteIds) : [],
+            'chartDays' => $chartDays,
         ];
     }
 
     /**
      * @return array<string, mixed>
      */
-    public function gasPageAnalytics(int $siteId): array
+    public function gasPageAnalytics(int $siteId, int $chartDays = 90, int $selectedDays = 90): array
     {
         $siteIds = collect([$siteId]);
         $site = Site::query()->find($siteId);
         $thresholds = $site?->settings['gas_thresholds'] ?? config('siteguard.gas_thresholds');
+        $hourlyHours = IotTimeRange::hourlyTrendHours($selectedDays);
 
         return [
-            'summary' => $this->gasSummary($siteIds),
-            'gasTrend' => $this->gasTrend($siteIds, 24),
-            'gasTrendDaily' => $this->gasTrendDaily($siteIds, 7),
-            'co2Trend' => $this->co2Trend($siteIds, 24),
-            'environmentalTrend' => $this->environmentalTrend($siteIds, 24),
-            'lelByGateway' => $this->latestGasByGateway($siteId),
-            'alarmHistory' => $this->alarmHistory($siteIds, 7),
+            'summary' => $this->gasSummary($siteIds, $selectedDays),
+            'gasTrend' => $this->gasTrend($siteIds, $hourlyHours),
+            'gasTrendDaily' => $this->gasTrendDaily($siteIds, $chartDays),
+            'co2Trend' => $this->co2Trend($siteIds, $hourlyHours),
+            'environmentalTrend' => $this->environmentalTrend($siteIds, $hourlyHours),
+            'lelByGateway' => $this->latestGasByGateway($siteId, $selectedDays),
+            'alarmHistory' => $this->alarmHistory($siteIds, $chartDays),
             'thresholds' => $thresholds,
+            'chartDays' => $chartDays,
         ];
     }
 
     /**
      * @return array<string, mixed>
      */
-    public function rfidPageAnalytics(int $siteId): array
+    public function rfidPageAnalytics(int $siteId, int $chartDays = 90, int $selectedDays = 90): array
     {
         $siteIds = collect([$siteId]);
+        $site = Site::query()->find($siteId);
+        $hourlyHours = IotTimeRange::hourlyTrendHours($selectedDays);
 
         return [
-            'gateFlow' => $this->gateFlow($siteIds, 7),
-            'gateFlowHourly' => $this->gateFlowHourly($siteIds, 24),
+            'gateFlow' => $this->gateFlow($siteIds, $chartDays),
+            'gateFlowHourly' => $this->gateFlowHourly($siteIds, $hourlyHours),
             'zoneOccupancy' => $this->zoneOccupancy($siteIds),
-            'contractorBreakdown' => $this->contractorBreakdown($siteId),
+            'contractorBreakdown' => $this->contractorBreakdown($siteId, $selectedDays),
             'rfidSummary' => $this->rfidSummary($siteIds),
-            'zoneMapPins' => $this->zoneMapPins($siteIds),
+            'zoneMapPins' => $this->zoneMapPins($siteIds, $site),
+            'siteMapCenter' => $site?->map_center_lat !== null && $site?->map_center_lng !== null
+                ? ['lat' => (float) $site->map_center_lat, 'lng' => (float) $site->map_center_lng]
+                : null,
+            'chartDays' => $chartDays,
         ];
     }
 
     /**
      * @return array<string, mixed>
      */
-    public function fieldDevicesAnalytics(int $siteId): array
+    public function fieldDevicesAnalytics(int $siteId, int $chartDays = 90): array
     {
         $siteIds = collect([$siteId]);
 
@@ -102,6 +114,7 @@ class IotAnalytics
             'healthByType' => $this->healthByTypeChart($siteId),
             'inventorySummary' => $this->fieldDevicesInventorySummary($siteId),
             'tokenSummary' => $this->ingestTokenSummary($siteId),
+            'chartDays' => $chartDays,
         ];
     }
 
@@ -241,29 +254,26 @@ class IotAnalytics
      */
     public function gateFlow(Collection $siteIds, int $days): array
     {
-        $labels = [];
-        $entries = [];
-        $exits = [];
+        $since = now()->subDays(max($days - 1, 0))->startOfDay();
+        $dateExpr = IotTimeRange::dateBucketExpression('occurred_at');
 
-        for ($i = $days - 1; $i >= 0; $i--) {
-            $day = now()->subDays($i)->startOfDay();
-            $next = $day->copy()->addDay();
-            $labels[] = $day->format('M j');
+        $entriesByDay = GateEntryExitLog::query()
+            ->when($siteIds->isNotEmpty(), fn (Builder $q) => $q->whereIn('site_id', $siteIds))
+            ->where('direction', 'entry')
+            ->where('occurred_at', '>=', $since)
+            ->selectRaw("{$dateExpr} as bucket, COUNT(*) as total")
+            ->groupBy('bucket')
+            ->pluck('total', 'bucket');
 
-            $entries[] = GateEntryExitLog::query()
-                ->when($siteIds->isNotEmpty(), fn (Builder $q) => $q->whereIn('site_id', $siteIds))
-                ->where('direction', 'entry')
-                ->whereBetween('occurred_at', [$day, $next])
-                ->count();
+        $exitsByDay = GateEntryExitLog::query()
+            ->when($siteIds->isNotEmpty(), fn (Builder $q) => $q->whereIn('site_id', $siteIds))
+            ->where('direction', 'exit')
+            ->where('occurred_at', '>=', $since)
+            ->selectRaw("{$dateExpr} as bucket, COUNT(*) as total")
+            ->groupBy('bucket')
+            ->pluck('total', 'bucket');
 
-            $exits[] = GateEntryExitLog::query()
-                ->when($siteIds->isNotEmpty(), fn (Builder $q) => $q->whereIn('site_id', $siteIds))
-                ->where('direction', 'exit')
-                ->whereBetween('occurred_at', [$day, $next])
-                ->count();
-        }
-
-        return compact('labels', 'entries', 'exits');
+        return $this->rollupDualCountSeries($since, now()->endOfDay(), $days, $entriesByDay, $exitsByDay);
     }
 
     /**
@@ -402,38 +412,46 @@ class IotAnalytics
      */
     public function alarmHistory(Collection $siteIds, int $days): array
     {
-        $labels = [];
-        $counts = [];
+        $since = now()->subDays(max($days - 1, 0))->startOfDay();
+        $dateExpr = IotTimeRange::dateBucketExpression('alarm_at');
 
-        for ($i = $days - 1; $i >= 0; $i--) {
-            $day = now()->subDays($i)->startOfDay();
-            $next = $day->copy()->addDay();
-            $labels[] = $day->format('M j');
+        $countsByDay = SensorAlarm::query()
+            ->when($siteIds->isNotEmpty(), fn (Builder $q) => $q->whereIn('site_id', $siteIds))
+            ->where('alarm_at', '>=', $since)
+            ->selectRaw("{$dateExpr} as bucket, COUNT(*) as total")
+            ->groupBy('bucket')
+            ->pluck('total', 'bucket');
 
-            $counts[] = SensorAlarm::query()
-                ->when($siteIds->isNotEmpty(), fn (Builder $q) => $q->whereIn('site_id', $siteIds))
-                ->whereBetween('alarm_at', [$day, $next])
-                ->count();
-        }
-
-        return compact('labels', 'counts');
+        return $this->rollupCountSeries($since, now()->endOfDay(), $days, $countsByDay);
     }
 
     /**
      * @return array<int, array{gateway: string, lel_pct: float|string|null, o2_pct: float|string|null, h2s_ppm: float|string|null, co_ppm: float|string|null, alarm_state: string|null}>
      */
-    public function latestGasByGateway(int $siteId): array
+    public function latestGasByGateway(int $siteId, int $selectedDays = 90): array
     {
-        return GasGateway::query()
+        $gatewayQuery = GasGateway::query()
             ->where('site_id', $siteId)
-            ->orderBy('code')
+            ->orderBy('code');
+
+        if ($selectedDays !== 0) {
+            $since = IotTimeRange::since($selectedDays);
+
+            if ($since !== null) {
+                $gatewayQuery->whereHas('gasReadings', fn (Builder $q) => $q->where('read_at', '>=', $since));
+            }
+        }
+
+        return $gatewayQuery
             ->get()
-            ->map(function (GasGateway $gateway) use ($siteId): array {
-                $latest = GasReading::query()
+            ->map(function (GasGateway $gateway) use ($siteId, $selectedDays): array {
+                $latestQuery = GasReading::query()
                     ->where('site_id', $siteId)
-                    ->where('gas_gateway_id', $gateway->id)
-                    ->orderByDesc('read_at')
-                    ->first();
+                    ->where('gas_gateway_id', $gateway->id);
+
+                IotTimeRange::applySince($latestQuery, 'read_at', $selectedDays);
+
+                $latest = $latestQuery->orderByDesc('read_at')->first();
 
                 return [
                     'gateway' => $gateway->name,
@@ -454,30 +472,18 @@ class IotAnalytics
      */
     public function gasTrendDaily(Collection $siteIds, int $days): array
     {
-        $labels = [];
-        $lel = [];
-        $o2 = [];
-        $h2s = [];
-        $co = [];
+        $since = now()->subDays(max($days - 1, 0))->startOfDay();
+        $dateExpr = IotTimeRange::dateBucketExpression('read_at');
 
-        for ($i = $days - 1; $i >= 0; $i--) {
-            $day = now()->subDays($i)->startOfDay();
-            $next = $day->copy()->addDay();
-            $labels[] = $day->format('M j');
+        $rowsByDay = GasReading::query()
+            ->when($siteIds->isNotEmpty(), fn (Builder $q) => $q->whereIn('site_id', $siteIds))
+            ->where('read_at', '>=', $since)
+            ->selectRaw("{$dateExpr} as bucket, AVG(lel_pct) as lel_avg, AVG(o2_pct) as o2_avg, AVG(h2s_ppm) as h2s_avg, AVG(co_ppm) as co_avg")
+            ->groupBy('bucket')
+            ->get()
+            ->keyBy('bucket');
 
-            $row = GasReading::query()
-                ->when($siteIds->isNotEmpty(), fn (Builder $q) => $q->whereIn('site_id', $siteIds))
-                ->whereBetween('read_at', [$day, $next])
-                ->selectRaw('AVG(lel_pct) as lel_avg, AVG(o2_pct) as o2_avg, AVG(h2s_ppm) as h2s_avg, AVG(co_ppm) as co_avg')
-                ->first();
-
-            $lel[] = $row?->lel_avg !== null ? round((float) $row->lel_avg, 2) : null;
-            $o2[] = $row?->o2_avg !== null ? round((float) $row->o2_avg, 2) : null;
-            $h2s[] = $row?->h2s_avg !== null ? round((float) $row->h2s_avg, 2) : null;
-            $co[] = $row?->co_avg !== null ? round((float) $row->co_avg, 2) : null;
-        }
-
-        return compact('labels', 'lel', 'o2', 'h2s', 'co');
+        return $this->rollupGasDailySeries($since, now()->endOfDay(), $days, $rowsByDay);
     }
 
     /**
@@ -540,19 +546,25 @@ class IotAnalytics
      * @param  Collection<int, int>  $siteIds
      * @return array<int, array{id: int, name: string, code: string, zone_type: string, count: int, lat: float|null, lng: float|null}>
      */
-    public function zoneMapPins(Collection $siteIds): array
+    public function zoneMapPins(Collection $siteIds, ?Site $site = null): array
     {
+        if ($site === null && $siteIds->count() === 1) {
+            $site = Site::query()->find($siteIds->first());
+        }
+
         return RfidZone::query()
             ->when($siteIds->isNotEmpty(), fn (Builder $q) => $q->whereIn('site_id', $siteIds))
             ->where('is_active', true)
             ->orderBy('name')
             ->get()
-            ->map(function (RfidZone $zone) use ($siteIds): array {
+            ->map(function (RfidZone $zone) use ($siteIds, $site): array {
                 $count = RfidTagLastSeen::query()
                     ->when($siteIds->isNotEmpty(), fn (Builder $q) => $q->whereIn('site_id', $siteIds))
                     ->where('rfid_zone_id', $zone->id)
                     ->where('is_on_site', true)
                     ->count();
+
+                [$lat, $lng] = $this->resolveZoneMapCoordinates($zone, $site);
 
                 return [
                     'id' => $zone->id,
@@ -560,20 +572,56 @@ class IotAnalytics
                     'code' => $zone->code,
                     'zone_type' => $zone->zone_type,
                     'count' => $count,
-                    'lat' => $zone->map_pin_lat !== null ? (float) $zone->map_pin_lat : null,
-                    'lng' => $zone->map_pin_lng !== null ? (float) $zone->map_pin_lng : null,
+                    'lat' => $lat,
+                    'lng' => $lng,
                 ];
             })
             ->all();
     }
 
     /**
+     * @return array{0: float|null, 1: float|null}
+     */
+    public function resolveZoneMapCoordinates(RfidZone $zone, ?Site $site): array
+    {
+        if ($zone->map_pin_lat === null || $zone->map_pin_lng === null) {
+            return [null, null];
+        }
+
+        $lat = (float) $zone->map_pin_lat;
+        $lng = (float) $zone->map_pin_lng;
+
+        if ($this->isRelativeSitePlanCoordinate($lat, $lng)
+            && $site?->map_center_lat !== null
+            && $site?->map_center_lng !== null) {
+            $centerLat = (float) $site->map_center_lat;
+            $centerLng = (float) $site->map_center_lng;
+            $spanLat = 0.0035;
+            $spanLng = $spanLat / max(cos(deg2rad($centerLat)), 0.2);
+
+            return [
+                $centerLat + ($lat - 0.5) * 2 * $spanLat,
+                $centerLng + ($lng - 0.5) * 2 * $spanLng,
+            ];
+        }
+
+        return [$lat, $lng];
+    }
+
+    private function isRelativeSitePlanCoordinate(float $lat, float $lng): bool
+    {
+        return abs($lat) <= 1.0 && abs($lng) <= 1.0;
+    }
+
+    /**
      * @return array<string, mixed>
      */
-    public function equipmentPageAnalytics(int $siteId): array
+    public function equipmentPageAnalytics(int $siteId, int $chartDays = 90, int $selectedDays = 90): array
     {
-        $byType = EquipmentAsset::query()
-            ->where('site_id', $siteId)
+        $byTypeQuery = EquipmentAsset::query()->where('site_id', $siteId);
+        IotTimeRange::applySince($byTypeQuery, 'registered_at', $selectedDays);
+
+        $byType = (clone $byTypeQuery)
             ->selectRaw('equipment_type, count(*) as total')
             ->groupBy('equipment_type')
             ->orderByDesc('total')
@@ -584,8 +632,10 @@ class IotAnalytics
             ])
             ->all();
 
-        $byStatus = EquipmentAsset::query()
-            ->where('site_id', $siteId)
+        $byStatusQuery = EquipmentAsset::query()->where('site_id', $siteId);
+        IotTimeRange::applySince($byStatusQuery, 'registered_at', $selectedDays);
+
+        $byStatus = $byStatusQuery
             ->selectRaw('status, count(*) as total')
             ->groupBy('status')
             ->get()
@@ -598,30 +648,40 @@ class IotAnalytics
         return [
             'byType' => $byType,
             'byStatus' => $byStatus,
+            'timeline' => $this->eventTimeline(
+                EquipmentInspection::query()
+                    ->whereHas('equipmentAsset', fn (Builder $q) => $q->where('site_id', $siteId)),
+                'inspected_at',
+                $chartDays,
+            ),
+            'chartDays' => $chartDays,
         ];
     }
 
     /**
      * @return array<string, mixed>
      */
-    public function lsrPageAnalytics(int $siteId): array
+    public function lsrPageAnalytics(int $siteId, int $chartDays = 90): array
     {
         return [
-            'timeline' => $this->dailyEventTimeline(
+            'timeline' => $this->eventTimeline(
                 LsrViolationLog::query()->where('site_id', $siteId),
                 'occurred_at',
-                14,
+                $chartDays,
             ),
+            'chartDays' => $chartDays,
         ];
     }
 
     /**
      * @return array<string, mixed>
      */
-    public function hsePageAnalytics(int $siteId): array
+    public function hsePageAnalytics(int $siteId, int $chartDays = 90, int $selectedDays = 90): array
     {
-        $byType = HseIncident::query()
-            ->where('site_id', $siteId)
+        $byTypeQuery = HseIncident::query()->where('site_id', $siteId);
+        IotTimeRange::applySince($byTypeQuery, 'occurred_at', $selectedDays);
+
+        $byType = (clone $byTypeQuery)
             ->selectRaw('incident_type, count(*) as total')
             ->groupBy('incident_type')
             ->orderByDesc('total')
@@ -632,8 +692,10 @@ class IotAnalytics
             ])
             ->all();
 
-        $byStatus = HseIncident::query()
-            ->where('site_id', $siteId)
+        $byStatusQuery = HseIncident::query()->where('site_id', $siteId);
+        IotTimeRange::applySince($byStatusQuery, 'occurred_at', $selectedDays);
+
+        $byStatus = $byStatusQuery
             ->selectRaw('status, count(*) as total')
             ->groupBy('status')
             ->get()
@@ -646,20 +708,22 @@ class IotAnalytics
         return [
             'byType' => $byType,
             'byStatus' => $byStatus,
-            'timeline' => $this->dailyEventTimeline(
+            'timeline' => $this->eventTimeline(
                 HseIncident::query()->where('site_id', $siteId),
                 'occurred_at',
-                14,
+                $chartDays,
             ),
+            'chartDays' => $chartDays,
         ];
     }
 
     /**
      * @return array<string, mixed>
      */
-    public function udpmPageAnalytics(int $siteId): array
+    public function udpmPageAnalytics(int $siteId, int $selectedDays = 90): array
     {
         $reports = UdpmWeeklyReport::query()->where('site_id', $siteId);
+        IotTimeRange::applySince($reports, 'week_start', $selectedDays);
 
         $byStatus = (clone $reports)
             ->selectRaw('status, count(*) as total')
@@ -707,22 +771,242 @@ class IotAnalytics
     /**
      * @return array{labels: list<string>, values: list<int>}
      */
-    private function dailyEventTimeline($query, string $column, int $days): array
+    private function eventTimeline(Builder $query, string $column, int $days): array
     {
+        $since = now()->subDays(max($days - 1, 0))->startOfDay();
+        $dateExpr = IotTimeRange::dateBucketExpression($column);
+
+        $countsByDay = (clone $query)
+            ->where($column, '>=', $since)
+            ->selectRaw("{$dateExpr} as bucket, COUNT(*) as total")
+            ->groupBy('bucket')
+            ->pluck('total', 'bucket');
+
+        return $this->rollupCountSeries($since, now()->endOfDay(), $days, $countsByDay);
+    }
+
+    /**
+     * @return array{labels: list<string>, counts: list<int>}
+     */
+    private function rollupCountSeries(
+        CarbonInterface $since,
+        CarbonInterface $until,
+        int $days,
+        Collection $countsByDay,
+    ): array {
+        $rolled = $this->rollupDualCountSeries($since, $until, $days, $countsByDay, collect());
+
+        return [
+            'labels' => $rolled['labels'],
+            'counts' => $rolled['entries'],
+            'values' => $rolled['entries'],
+        ];
+    }
+
+    /**
+     * @return array{labels: list<string>, entries: list<int>, exits: list<int>}
+     */
+    private function rollupDualCountSeries(
+        CarbonInterface $since,
+        CarbonInterface $until,
+        int $days,
+        Collection $primaryByDay,
+        Collection $secondaryByDay,
+    ): array {
         $labels = [];
-        $values = [];
+        $primary = [];
+        $secondary = [];
 
-        for ($i = $days - 1; $i >= 0; $i--) {
-            $day = now()->subDays($i)->startOfDay();
-            $next = $day->copy()->addDay();
-            $labels[] = $day->format('M j');
-
-            $values[] = (clone $query)
-                ->whereBetween($column, [$day, $next])
-                ->count();
+        if ($days > 180) {
+            $cursor = $since->copy()->startOfMonth();
+            while ($cursor <= $until) {
+                $labels[] = $cursor->format('M Y');
+                $primary[] = $this->sumDailyBucketsInMonth($primaryByDay, $cursor);
+                $secondary[] = $secondaryByDay->isNotEmpty()
+                    ? $this->sumDailyBucketsInMonth($secondaryByDay, $cursor)
+                    : 0;
+                $cursor = $cursor->copy()->addMonth();
+            }
+        } elseif ($days > 60) {
+            $cursor = $since->copy()->startOfWeek();
+            while ($cursor <= $until) {
+                $labels[] = $cursor->format('M j');
+                $primary[] = $this->sumDailyBucketsInWeek($primaryByDay, $cursor);
+                $secondary[] = $secondaryByDay->isNotEmpty()
+                    ? $this->sumDailyBucketsInWeek($secondaryByDay, $cursor)
+                    : 0;
+                $cursor = $cursor->copy()->addWeek();
+            }
+        } else {
+            $cursor = $since->copy()->startOfDay();
+            while ($cursor <= $until) {
+                $key = $cursor->format('Y-m-d');
+                $labels[] = $cursor->format('M j');
+                $primary[] = (int) ($primaryByDay[$key] ?? 0);
+                $secondary[] = (int) ($secondaryByDay[$key] ?? 0);
+                $cursor = $cursor->copy()->addDay();
+            }
         }
 
-        return compact('labels', 'values');
+        return [
+            'labels' => $labels,
+            'entries' => $primary,
+            'exits' => $secondary,
+        ];
+    }
+
+    /**
+     * @return array{labels: list<string>, lel: list<float|null>, o2: list<float|null>, h2s: list<float|null>, co: list<float|null>}
+     */
+    private function rollupGasDailySeries(
+        CarbonInterface $since,
+        CarbonInterface $until,
+        int $days,
+        Collection $rowsByDay,
+    ): array {
+        $labels = [];
+        $lel = [];
+        $o2 = [];
+        $h2s = [];
+        $co = [];
+
+        if ($days > 180) {
+            $cursor = $since->copy()->startOfMonth();
+            while ($cursor <= $until) {
+                $labels[] = $cursor->format('M Y');
+                [$l, $o, $h, $c] = $this->avgGasBucketsInMonth($rowsByDay, $cursor);
+                $lel[] = $l;
+                $o2[] = $o;
+                $h2s[] = $h;
+                $co[] = $c;
+                $cursor = $cursor->copy()->addMonth();
+            }
+        } elseif ($days > 60) {
+            $cursor = $since->copy()->startOfWeek();
+            while ($cursor <= $until) {
+                $labels[] = $cursor->format('M j');
+                [$l, $o, $h, $c] = $this->avgGasBucketsInWeek($rowsByDay, $cursor);
+                $lel[] = $l;
+                $o2[] = $o;
+                $h2s[] = $h;
+                $co[] = $c;
+                $cursor = $cursor->copy()->addWeek();
+            }
+        } else {
+            $cursor = $since->copy()->startOfDay();
+            while ($cursor <= $until) {
+                $key = $cursor->format('Y-m-d');
+                $labels[] = $cursor->format('M j');
+                $row = $rowsByDay->get($key);
+                $lel[] = $row?->lel_avg !== null ? round((float) $row->lel_avg, 2) : null;
+                $o2[] = $row?->o2_avg !== null ? round((float) $row->o2_avg, 2) : null;
+                $h2s[] = $row?->h2s_avg !== null ? round((float) $row->h2s_avg, 2) : null;
+                $co[] = $row?->co_avg !== null ? round((float) $row->co_avg, 2) : null;
+                $cursor = $cursor->copy()->addDay();
+            }
+        }
+
+        return compact('labels', 'lel', 'o2', 'h2s', 'co');
+    }
+
+    private function sumDailyBucketsInWeek(Collection $countsByDay, CarbonInterface $weekStart): int
+    {
+        $total = 0;
+        $cursor = $weekStart->copy()->startOfDay();
+
+        for ($i = 0; $i < 7; $i++) {
+            $total += (int) ($countsByDay[$cursor->format('Y-m-d')] ?? 0);
+            $cursor = $cursor->copy()->addDay();
+        }
+
+        return $total;
+    }
+
+    private function sumDailyBucketsInMonth(Collection $countsByDay, CarbonInterface $monthStart): int
+    {
+        $total = 0;
+        $cursor = $monthStart->copy()->startOfMonth();
+        $end = $cursor->copy()->endOfMonth();
+
+        while ($cursor <= $end) {
+            $total += (int) ($countsByDay[$cursor->format('Y-m-d')] ?? 0);
+            $cursor = $cursor->copy()->addDay();
+        }
+
+        return $total;
+    }
+
+    /**
+     * @return array{0: float|null, 1: float|null, 2: float|null, 3: float|null}
+     */
+    private function avgGasBucketsInWeek(Collection $rowsByDay, CarbonInterface $weekStart): array
+    {
+        $lel = [];
+        $o2 = [];
+        $h2s = [];
+        $co = [];
+        $cursor = $weekStart->copy()->startOfDay();
+
+        for ($i = 0; $i < 7; $i++) {
+            $row = $rowsByDay->get($cursor->format('Y-m-d'));
+            if ($row?->lel_avg !== null) {
+                $lel[] = (float) $row->lel_avg;
+            }
+            if ($row?->o2_avg !== null) {
+                $o2[] = (float) $row->o2_avg;
+            }
+            if ($row?->h2s_avg !== null) {
+                $h2s[] = (float) $row->h2s_avg;
+            }
+            if ($row?->co_avg !== null) {
+                $co[] = (float) $row->co_avg;
+            }
+            $cursor = $cursor->copy()->addDay();
+        }
+
+        return [
+            $lel !== [] ? round(array_sum($lel) / count($lel), 2) : null,
+            $o2 !== [] ? round(array_sum($o2) / count($o2), 2) : null,
+            $h2s !== [] ? round(array_sum($h2s) / count($h2s), 2) : null,
+            $co !== [] ? round(array_sum($co) / count($co), 2) : null,
+        ];
+    }
+
+    /**
+     * @return array{0: float|null, 1: float|null, 2: float|null, 3: float|null}
+     */
+    private function avgGasBucketsInMonth(Collection $rowsByDay, CarbonInterface $monthStart): array
+    {
+        $lel = [];
+        $o2 = [];
+        $h2s = [];
+        $co = [];
+        $cursor = $monthStart->copy()->startOfMonth();
+        $end = $cursor->copy()->endOfMonth();
+
+        while ($cursor <= $end) {
+            $row = $rowsByDay->get($cursor->format('Y-m-d'));
+            if ($row?->lel_avg !== null) {
+                $lel[] = (float) $row->lel_avg;
+            }
+            if ($row?->o2_avg !== null) {
+                $o2[] = (float) $row->o2_avg;
+            }
+            if ($row?->h2s_avg !== null) {
+                $h2s[] = (float) $row->h2s_avg;
+            }
+            if ($row?->co_avg !== null) {
+                $co[] = (float) $row->co_avg;
+            }
+            $cursor = $cursor->copy()->addDay();
+        }
+
+        return [
+            $lel !== [] ? round(array_sum($lel) / count($lel), 2) : null,
+            $o2 !== [] ? round(array_sum($o2) / count($o2), 2) : null,
+            $h2s !== [] ? round(array_sum($h2s) / count($h2s), 2) : null,
+            $co !== [] ? round(array_sum($co) / count($co), 2) : null,
+        ];
     }
 
     /**
@@ -803,18 +1087,23 @@ class IotAnalytics
     /**
      * @return array<int, array{contractor: string, count: int}>
      */
-    public function contractorBreakdown(int $siteId): array
+    public function contractorBreakdown(int $siteId, int $selectedDays = 90): array
     {
-        return WorkerRecord::query()
-            ->where('site_id', $siteId)
-            ->where('is_active', true)
-            ->selectRaw('contractor, count(*) as total')
-            ->groupBy('contractor')
+        $query = GateEntryExitLog::query()
+            ->where('gate_entry_exit_log.site_id', $siteId)
+            ->where('direction', 'entry')
+            ->leftJoin('worker_records', 'worker_records.id', '=', 'gate_entry_exit_log.worker_record_id');
+
+        IotTimeRange::applySince($query, 'gate_entry_exit_log.occurred_at', $selectedDays);
+
+        return $query
+            ->selectRaw("COALESCE(worker_records.contractor, 'Unknown') as contractor, count(*) as total")
+            ->groupBy('worker_records.contractor')
             ->orderByDesc('total')
             ->limit(8)
             ->get()
             ->map(fn ($row): array => [
-                'contractor' => $row->contractor,
+                'contractor' => (string) $row->contractor,
                 'count' => (int) $row->total,
             ])
             ->all();
@@ -824,20 +1113,22 @@ class IotAnalytics
      * @param  Collection<int, int>  $siteIds
      * @return array{max_lel: float|null, avg_co2: float|null, gateways_online: int, gateways_total: int}
      */
-    public function gasSummary(Collection $siteIds): array
+    public function gasSummary(Collection $siteIds, int $selectedDays = 90): array
     {
-        $since = now()->subDay();
+        $maxLelQuery = GasReading::query()
+            ->when($siteIds->isNotEmpty(), fn (Builder $q) => $q->whereIn('site_id', $siteIds));
 
-        $maxLel = GasReading::query()
-            ->when($siteIds->isNotEmpty(), fn (Builder $q) => $q->whereIn('site_id', $siteIds))
-            ->where('read_at', '>=', $since)
-            ->max('lel_pct');
+        IotTimeRange::applySince($maxLelQuery, 'read_at', $selectedDays);
 
-        $avgCo2 = SensorReading::query()
+        $maxLel = $maxLelQuery->max('lel_pct');
+
+        $avgCo2Query = SensorReading::query()
             ->when($siteIds->isNotEmpty(), fn (Builder $q) => $q->whereIn('site_id', $siteIds))
-            ->where('parameter', 'co2_ppm')
-            ->where('read_at', '>=', $since)
-            ->avg('value');
+            ->where('parameter', 'co2_ppm');
+
+        IotTimeRange::applySince($avgCo2Query, 'read_at', $selectedDays);
+
+        $avgCo2 = $avgCo2Query->avg('value');
 
         $gatewaysQuery = GasGateway::query()
             ->when($siteIds->isNotEmpty(), fn (Builder $q) => $q->whereIn('site_id', $siteIds));

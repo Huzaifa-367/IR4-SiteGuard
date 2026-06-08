@@ -1,6 +1,7 @@
 import { router } from '@inertiajs/react';
 import { Pencil, Search } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { ConceptPagination } from '@/components/concepts';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -222,43 +223,7 @@ export default function AllAccountsTable({
                 </table>
             </div>
 
-            {users.last_page > 1 && (
-                <div className="flex flex-col items-center justify-between gap-3 text-sm text-muted-foreground sm:flex-row">
-                    <p>
-                        Showing {users.from ?? 0}–{users.to ?? 0} of{' '}
-                        {users.total}
-                    </p>
-
-                    <div className="flex flex-wrap gap-1">
-                        {users.links.map((link, idx) => (
-                            <Button
-                                key={`${link.label}-${idx}`}
-                                size="sm"
-                                variant={link.active ? 'default' : 'ghost'}
-                                disabled={link.url === null}
-                                onClick={() => {
-                                    if (link.url !== null) {
-                                        router.get(
-                                            link.url,
-                                            {},
-                                            {
-                                                preserveScroll: true,
-                                                preserveState: true,
-                                            },
-                                        );
-                                    }
-                                }}
-                            >
-                                <span
-                                    dangerouslySetInnerHTML={{
-                                        __html: link.label,
-                                    }}
-                                />
-                            </Button>
-                        ))}
-                    </div>
-                </div>
-            )}
+            <ConceptPagination links={users.links} />
         </div>
     );
 }

@@ -1,4 +1,4 @@
-import { Link } from '@inertiajs/react';
+import { Link, type InertiaLinkProps } from '@inertiajs/react';
 import type { ReactNode } from 'react';
 import {
     Area,
@@ -66,7 +66,9 @@ function IotChartCard({
             {action ? (
                 <div className="flex justify-end border-b border-border/60 px-4 py-2">{action}</div>
             ) : null}
-            <div className={cn(tall ? CHART_HEIGHT_TALL : CHART_HEIGHT, 'p-3 pt-1')}>{children}</div>
+            <div className="p-3 pt-1">
+                <div className={cn('w-full min-h-0', tall ? CHART_HEIGHT_TALL : CHART_HEIGHT)}>{children}</div>
+            </div>
         </ConceptTableCard>
     );
 }
@@ -477,15 +479,21 @@ export function AlarmHistoryChart({ labels, counts }: AlarmHistoryChartProps) {
 
 type ContractorBreakdownChartProps = {
     data: { contractor: string; count: number }[];
+    title?: string;
+    description?: string;
 };
 
-export function ContractorBreakdownChart({ data }: ContractorBreakdownChartProps) {
+export function ContractorBreakdownChart({
+    data,
+    title = 'Workers by contractor',
+    description = 'Gate entries in selected period',
+}: ContractorBreakdownChartProps) {
     return (
         <HorizontalCategoryChart
-            title="Workers by contractor"
-            description="Active registered workers"
+            title={title}
+            description={description}
             data={data.map((row) => ({ label: row.contractor, count: row.count }))}
-            emptyMessage="No workers registered"
+            emptyMessage="No gate entries in this period"
         />
     );
 }
@@ -714,7 +722,7 @@ type IotActiveAlarmsListProps = {
         severity: string;
         alarm_at: string;
     }[];
-    gasHref?: string;
+    gasHref?: NonNullable<InertiaLinkProps['href']>;
 };
 
 export function IotActiveAlarmsList({ alarms, gasHref }: IotActiveAlarmsListProps) {
@@ -819,83 +827,8 @@ export function EnvironmentalTrendChart({ data }: { data: EnvironmentalTrendData
     );
 }
 
-export type ZoneMapPin = {
-    id: number;
-    name: string;
-    code: string;
-    zone_type: string;
-    count: number;
-    lat: number | null;
-    lng: number | null;
-};
-
-const ZONE_TYPE_COLORS: Record<string, string> = {
-    gate: 'bg-slate-600',
-    general: 'bg-teal-600',
-    restricted: 'bg-red-600',
-    height_work: 'bg-amber-600',
-    muster: 'bg-blue-600',
-};
-
-export function ZonePositionMap({ zones }: { zones: ZoneMapPin[] }) {
-    const withCoords = zones.filter((z) => z.lat !== null && z.lng !== null);
-    const maxCount = Math.max(...zones.map((z) => z.count), 1);
-
-    return (
-        <ConceptTableCard title="Zone map" description="Relative positions · bubble size = headcount">
-            {withCoords.length > 0 ? (
-                <div className="relative m-3 aspect-[2/1] min-h-[10rem] rounded-lg border bg-gradient-to-br from-muted/40 to-muted/10">
-                    {withCoords.map((zone) => {
-                        const latNorm = ((zone.lat ?? 0) % 1) * 100;
-                        const lngNorm = ((zone.lng ?? 0) % 1) * 100;
-                        const size = 24 + Math.round((zone.count / maxCount) * 20);
-                        const color = ZONE_TYPE_COLORS[zone.zone_type] ?? 'bg-primary';
-
-                        return (
-                            <div
-                                key={zone.id}
-                                className="absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center"
-                                style={{
-                                    left: `${Math.min(92, Math.max(8, lngNorm))}%`,
-                                    top: `${Math.min(88, Math.max(8, latNorm))}%`,
-                                }}
-                                title={`${zone.name}: ${zone.count} on site`}
-                            >
-                                <span
-                                    className={cn(
-                                        'flex items-center justify-center rounded-full font-bold text-white shadow-md ring-2 ring-background',
-                                        color,
-                                    )}
-                                    style={{ width: size, height: size, fontSize: size < 30 ? 10 : 11 }}
-                                >
-                                    {zone.count}
-                                </span>
-                                <span className="mt-0.5 max-w-[5.5rem] truncate text-center text-[10px] font-medium leading-tight">
-                                    {zone.name}
-                                </span>
-                            </div>
-                        );
-                    })}
-                </div>
-            ) : (
-                <IotEmptyState message="No map coordinates configured for zones" />
-            )}
-            <div className="grid gap-2 border-t p-3 sm:grid-cols-2 lg:grid-cols-3">
-                {zones.map((zone) => (
-                    <div key={zone.id} className="flex items-center justify-between gap-2 rounded-md border px-2.5 py-2 text-xs">
-                        <div className="min-w-0">
-                            <p className="truncate font-medium">{zone.name}</p>
-                            <p className="text-muted-foreground">{formatHumanLabel(zone.zone_type)}</p>
-                        </div>
-                        <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 font-semibold tabular-nums">
-                            {zone.count}
-                        </span>
-                    </div>
-                ))}
-            </div>
-        </ConceptTableCard>
-    );
-}
+export type { ZoneMapPin } from '@/components/iot/zone-position-map';
+export { ZonePositionMap } from '@/components/iot/zone-position-map';
 
 type GasThresholdsProps = {
     thresholds: Record<string, Record<string, number>>;

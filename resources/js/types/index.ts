@@ -1,4 +1,5 @@
 export type * from './auth';
+export type * from './pagination';
 export type * from './navigation';
 export type * from './permission';
 export type * from './site-context';

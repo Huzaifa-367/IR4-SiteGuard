@@ -150,6 +150,16 @@ class IotScenarioCatalog
             ['tag_epc' => 'E2801160600002010000A013', 'employee_number' => 'PK-8835', 'full_name' => 'Imran Khan', 'contractor' => 'CB&I / McDermott', 'role' => 'Pipefitter', 'nationality' => 'Pakistani', 'portable_approved' => true, 'portable_devices' => [['type' => 'phone', 'serial' => 'AND-IK-8835', 'approved_at' => '2026-01-25']], 'on_site_default' => false, 'zone_code' => 'gate-main', 'stationary' => false],
             ['tag_epc' => 'E2801160600002010000A014', 'employee_number' => 'SA-10544', 'full_name' => 'Nasser Al-Mutairi', 'contractor' => 'Al Rushaid Construction', 'role' => 'Safety Watch', 'nationality' => 'Saudi', 'portable_approved' => true, 'portable_devices' => [['type' => 'radio', 'serial' => 'MOT-NM-10544', 'approved_at' => '2026-01-14']], 'on_site_default' => true, 'zone_code' => 'work-front-a', 'stationary' => false],
             ['tag_epc' => 'E2801160600002010000A015', 'employee_number' => 'PH-2215', 'full_name' => 'Mark Reyes', 'contractor' => 'NESMA & Partners', 'role' => 'Painter', 'nationality' => 'Filipino', 'portable_approved' => false, 'portable_devices' => [], 'on_site_default' => true, 'zone_code' => 'work-front-b', 'stationary' => false],
+            ['tag_epc' => 'E2801160600002010000A016', 'employee_number' => 'IN-3412', 'full_name' => 'Sunil Patel', 'contractor' => 'Tekfen Construction', 'role' => 'Pipefitter', 'nationality' => 'Indian', 'portable_approved' => true, 'portable_devices' => [['type' => 'phone', 'serial' => 'AND-SP-3412', 'approved_at' => '2025-11-10']], 'on_site_default' => true, 'zone_code' => 'work-front-a', 'stationary' => false],
+            ['tag_epc' => 'E2801160600002010000A017', 'employee_number' => 'PK-8848', 'full_name' => 'Tariq Mehmood', 'contractor' => 'NESMA & Partners', 'role' => 'Helper', 'nationality' => 'Pakistani', 'portable_approved' => false, 'portable_devices' => [], 'on_site_default' => true, 'zone_code' => 'work-front-b', 'stationary' => false],
+            ['tag_epc' => 'E2801160600002010000A018', 'employee_number' => 'SA-10555', 'full_name' => 'Yousef Al-Ghamdi', 'contractor' => 'Al Rushaid Construction', 'role' => 'Welder', 'nationality' => 'Saudi', 'portable_approved' => true, 'portable_devices' => [['type' => 'phone', 'serial' => 'IPH-YG-10555', 'approved_at' => '2025-10-05']], 'on_site_default' => true, 'zone_code' => 'restricted-pipe', 'stationary' => false],
+            ['tag_epc' => 'E2801160600002010000A019', 'employee_number' => 'BD-7725', 'full_name' => 'Rahim Uddin', 'contractor' => 'CB&I / McDermott', 'role' => 'Scaffolder', 'nationality' => 'Bangladeshi', 'portable_approved' => true, 'portable_devices' => [['type' => 'phone', 'serial' => 'AND-RU-7725', 'approved_at' => '2025-12-01']], 'on_site_default' => true, 'zone_code' => 'height-scaffold', 'stationary' => false],
+            ['tag_epc' => 'E2801160600002010000A020', 'employee_number' => 'NP-4422', 'full_name' => 'Prakash Shrestha', 'contractor' => 'Tekfen Construction', 'role' => 'Rigger', 'nationality' => 'Nepali', 'portable_approved' => false, 'portable_devices' => [], 'on_site_default' => true, 'zone_code' => 'work-front-b', 'stationary' => false],
+            ['tag_epc' => 'E2801160600002010000A021', 'employee_number' => 'EG-1195', 'full_name' => 'Omar Farouk', 'contractor' => 'NESMA & Partners', 'role' => 'Electrician', 'nationality' => 'Egyptian', 'portable_approved' => true, 'portable_devices' => [['type' => 'phone', 'serial' => 'IPH-OF-1195', 'approved_at' => '2025-09-18']], 'on_site_default' => true, 'zone_code' => 'work-front-a', 'stationary' => false],
+            ['tag_epc' => 'E2801160600002010000A022', 'employee_number' => 'PH-2228', 'full_name' => 'Rico Santos', 'contractor' => 'CB&I / McDermott', 'role' => 'Instrument Tech', 'nationality' => 'Filipino', 'portable_approved' => true, 'portable_devices' => [['type' => 'tablet', 'serial' => 'TAB-RS-2228', 'approved_at' => '2025-11-22']], 'on_site_default' => true, 'zone_code' => 'work-front-b', 'stationary' => false],
+            ['tag_epc' => 'E2801160600002010000A023', 'employee_number' => 'SA-10561', 'full_name' => 'Bandar Al-Zahrani', 'contractor' => 'Saudi Aramco Projects', 'role' => 'Safety Watch', 'nationality' => 'Saudi', 'portable_approved' => true, 'portable_devices' => [['type' => 'radio', 'serial' => 'MOT-BZ-10561', 'approved_at' => '2025-08-30']], 'on_site_default' => true, 'zone_code' => 'work-front-a', 'stationary' => false],
+            ['tag_epc' => 'E2801160600002010000A024', 'employee_number' => 'IN-3420', 'full_name' => 'Deepak Verma', 'contractor' => 'Tekfen Construction', 'role' => 'Crane Operator', 'nationality' => 'Indian', 'portable_approved' => true, 'portable_devices' => [['type' => 'phone', 'serial' => 'AND-DV-3420', 'approved_at' => '2025-10-12']], 'on_site_default' => true, 'zone_code' => 'work-front-b', 'stationary' => false],
+            ['tag_epc' => 'E2801160600002010000A025', 'employee_number' => 'PK-8855', 'full_name' => 'Asif Ali', 'contractor' => 'Al Rushaid Construction', 'role' => 'Helper', 'nationality' => 'Pakistani', 'portable_approved' => false, 'portable_devices' => [], 'on_site_default' => false, 'zone_code' => 'gate-main', 'stationary' => false],
         ];
     }
 
@@ -198,6 +208,136 @@ class IotScenarioCatalog
     public static function unknownTagEpc(): string
     {
         return 'E2801160600002010000FFFF';
+    }
+
+    /**
+     * Distribute LSR violations across the history window (linked templates, varied dates).
+     *
+     * @return list<array{lsr_category: string, detection_mode: string, description: string, actions_taken: string|null, occurred_at: string}>
+     */
+    public static function historicalLsrViolations(IotWorkCalendar $calendar, float $scale): array
+    {
+        $templates = self::lsrViolations();
+        $perMonth = config('siteguard.iot_demo_seed.lsr_per_month', [2, 4]);
+        $events = [];
+        $cursor = $calendar->periodStart()->copy()->startOfMonth();
+        $end = $calendar->periodEnd()->copy()->startOfMonth();
+
+        while ($cursor->lte($end)) {
+            $count = max(1, (int) round($calendar->seededInt($cursor->format('Y-m').'-lsr', $perMonth[0], $perMonth[1]) * $scale));
+            $days = $calendar->pickWorkdaysInMonth($cursor, $count);
+
+            foreach ($days as $index => $day) {
+                $template = $templates[($calendar->seededInt($day->toDateString(), 0, count($templates) - 1))];
+                $at = $calendar->workTimestamp($day, "lsr-{$index}", 8, 16);
+                $events[] = [
+                    'lsr_category' => $template['lsr_category'],
+                    'detection_mode' => $template['detection_mode'],
+                    'description' => $template['description'].' ('.$at->format('M Y').')',
+                    'actions_taken' => $template['actions_taken'],
+                    'occurred_at' => $at->toDateTimeString(),
+                ];
+            }
+
+            $cursor = $cursor->copy()->addMonth();
+        }
+
+        return $events;
+    }
+
+    /**
+     * @return list<array{incident_number: string, status: string, severity: string|null, incident_type: string, occurred_at: string, classified: bool, correlated: bool}>
+     */
+    public static function historicalHseIncidents(IotWorkCalendar $calendar, float $scale): array
+    {
+        $templates = self::hseIncidents();
+        $perMonth = config('siteguard.iot_demo_seed.hse_per_month', [1, 2]);
+        $events = [];
+        $sequence = [];
+        $cursor = $calendar->periodStart()->copy()->startOfMonth();
+        $end = $calendar->periodEnd()->copy()->startOfMonth();
+
+        while ($cursor->lte($end)) {
+            $year = $cursor->format('Y');
+            $sequence[$year] ??= 0;
+            $count = max(0, (int) round($calendar->seededInt($cursor->format('Y-m').'-hse', $perMonth[0], $perMonth[1]) * $scale));
+            $days = $calendar->pickWorkdaysInMonth($cursor, max(1, $count));
+
+            foreach (array_slice($days, 0, $count) as $index => $day) {
+                $template = $templates[$index % count($templates)];
+                $sequence[$year]++;
+                $at = $calendar->workTimestamp($day, "hse-{$index}", 9, 15);
+                $classified = $template['classified'] || $at->lt(now()->subDays(14));
+
+                $events[] = [
+                    'incident_number' => sprintf('INC-%s-%05d', $year, $sequence[$year]),
+                    'status' => $classified ? 'classified' : 'pending_classification',
+                    'severity' => $classified ? ($template['severity'] ?? 'medium') : null,
+                    'incident_type' => $template['incident_type'],
+                    'occurred_at' => $at->toDateTimeString(),
+                    'classified' => $classified,
+                    'correlated' => $template['correlated'] ?? false,
+                ];
+            }
+
+            $cursor = $cursor->copy()->addMonth();
+        }
+
+        return $events;
+    }
+
+    /**
+     * @return list<array{vehicle_description: string, violation_type: string, description: string, actions_taken: string, occurred_at: string}>
+     */
+    public static function historicalVehicleViolations(IotWorkCalendar $calendar, float $scale): array
+    {
+        $templates = self::vehicleViolations();
+        $perMonth = config('siteguard.iot_demo_seed.vehicle_violations_per_month', [0, 2]);
+        $events = [];
+        $cursor = $calendar->periodStart()->copy()->startOfMonth();
+        $end = $calendar->periodEnd()->copy()->startOfMonth();
+
+        while ($cursor->lte($end)) {
+            $count = (int) round($calendar->seededInt($cursor->format('Y-m').'-veh', $perMonth[0], $perMonth[1]) * $scale);
+            $days = $calendar->pickWorkdaysInMonth($cursor, max(1, $count));
+
+            foreach (array_slice($days, 0, $count) as $index => $day) {
+                $template = $templates[$index % count($templates)];
+                $at = $calendar->workTimestamp($day, "veh-{$index}", 10, 17);
+                $events[] = [
+                    'vehicle_description' => $template['vehicle_description'],
+                    'violation_type' => $template['violation_type'],
+                    'description' => $template['description'],
+                    'actions_taken' => $template['actions_taken'],
+                    'occurred_at' => $at->toDateTimeString(),
+                ];
+            }
+
+            $cursor = $cursor->copy()->addMonth();
+        }
+
+        return $events;
+    }
+
+    /**
+     * Quarterly evacuation drill timestamps within the history window.
+     *
+     * @return list<string>
+     */
+    public static function historicalEvacuationDates(IotWorkCalendar $calendar): array
+    {
+        $dates = [];
+        $cursor = $calendar->periodStart()->copy()->startOfQuarter();
+
+        while ($cursor->lte($calendar->periodEnd())) {
+            $day = $calendar->pickWorkdaysInMonth($cursor, 1)[0] ?? null;
+            if ($day !== null) {
+                $dates[] = $day->copy()->setTime(9, 30)->toDateTimeString();
+            }
+            $cursor = $cursor->copy()->addQuarter();
+        }
+
+        return $dates;
     }
 
     /**

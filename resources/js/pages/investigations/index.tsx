@@ -1,7 +1,14 @@
 import { Head, Link } from '@inertiajs/react';
 import { Plus } from 'lucide-react';
 import { useState } from 'react';
-import { ConceptPageHeader, ConceptPageShell, ConceptTableCard } from '@/components/concepts';
+import {
+    ConceptPageHeader,
+    ConceptPageShell,
+    ConceptPagination,
+    ConceptTableCard,
+    TimeRangeSelect,
+    type TimeRangeFilters,
+} from '@/components/concepts';
 import { ConceptStatusBadge } from '@/components/concepts/concept-status-badge';
 import InvestigationFormDialog from '@/components/siteguard/investigation-form-dialog';
 import { Button } from '@/components/ui/button';
@@ -14,6 +21,7 @@ import {
     TableRow,
 } from '@/components/ui/table';
 import { useSiteContext } from '@/hooks/use-site-context';
+import type { Paginator } from '@/types/pagination';
 import { index as investigationsIndex, show as investigationShow } from '@/routes/investigations';
 
 type InvestigationRow = {
@@ -27,11 +35,12 @@ type InvestigationRow = {
 
 type Props = {
     site: { id: number; name: string };
-    investigations: InvestigationRow[];
+    investigations: Paginator<InvestigationRow>;
+    filters: TimeRangeFilters;
     users: { id: number; name: string }[];
 };
 
-export default function InvestigationsIndex({ site, investigations, users }: Props) {
+export default function InvestigationsIndex({ site, investigations, filters, users }: Props) {
     const [dialogOpen, setDialogOpen] = useState(false);
     const { selectedSite } = useSiteContext();
     const siteName = selectedSite?.name ?? site.name;
@@ -40,7 +49,11 @@ export default function InvestigationsIndex({ site, investigations, users }: Pro
         <>
             <Head title={`Investigations — ${siteName}`} />
             <ConceptPageShell>
-                <ConceptPageHeader title="Investigations" description={siteName}>
+                <ConceptPageHeader
+                    title="Investigations"
+                    description={`${investigations.total.toLocaleString()} cases in ${filters.label.toLowerCase()} — ${siteName}`}
+                >
+                    <TimeRangeSelect filters={filters} />
                     <Button size="sm" onClick={() => setDialogOpen(true)}>
                         <Plus className="mr-1 size-4" />
                         New investigation
@@ -57,7 +70,7 @@ export default function InvestigationsIndex({ site, investigations, users }: Pro
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {investigations.map((inv) => (
+                            {investigations.data.map((inv) => (
                                 <TableRow key={inv.id}>
                                     <TableCell>
                                         <Link
@@ -68,11 +81,7 @@ export default function InvestigationsIndex({ site, investigations, users }: Pro
                                         </Link>
                                     </TableCell>
                                     <TableCell>
-                                        <ConceptStatusBadge
-                                            tone={inv.status === 'open' ? 'warning' : 'success'}
-                                        >
-                                            {inv.status}
-                                        </ConceptStatusBadge>
+                                        <ConceptStatusBadge>{inv.status}</ConceptStatusBadge>
                                     </TableCell>
                                     <TableCell>{inv.assigned_user ?? '—'}</TableCell>
                                     <TableCell>{inv.alerts_count}</TableCell>
@@ -80,9 +89,16 @@ export default function InvestigationsIndex({ site, investigations, users }: Pro
                             ))}
                         </TableBody>
                     </Table>
+                    <div className="px-4 pb-4">
+                        <ConceptPagination links={investigations.links} />
+                    </div>
                 </ConceptTableCard>
             </ConceptPageShell>
-            <InvestigationFormDialog open={dialogOpen} onOpenChange={setDialogOpen} users={users} />
+            <InvestigationFormDialog
+                open={dialogOpen}
+                onOpenChange={setDialogOpen}
+                users={users}
+            />
         </>
     );
 }

@@ -1,6 +1,12 @@
-import { Form, Head } from '@inertiajs/react';
+import { Form, Head, Link } from '@inertiajs/react';
 import { useState } from 'react';
-import { ConceptPageHeader, ConceptPageShell, ConceptTableCard } from '@/components/concepts';
+import {
+    ConceptPageHeader,
+    ConceptPageShell,
+    ConceptPagination,
+    ConceptTableCard,
+} from '@/components/concepts';
+import { IotTimeRangeSelect, type IotTimeRangeFilters } from '@/components/iot/iot-time-range-select';
 import { EnumSelect, type EnumOption } from '@/components/siteguard/enum-select';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
@@ -24,18 +30,34 @@ import {
 import { useSiteContext } from '@/hooks/use-site-context';
 import LsrViolationController from '@/actions/App/Http/Controllers/LsrViolationController';
 import { overview as lsrOverview } from '@/routes/iot/lsr';
-import { index as vehicleViolationsIndex } from '@/routes/iot/lsr/vehicle-violations';
+import {
+    index as vehicleViolationsIndex,
+    show as vehicleViolationShow,
+} from '@/routes/iot/lsr/vehicle-violations';
+import { IotViewLink } from '@/components/iot/iot-module-layout';
+import { IotRelativeTime } from '@/components/iot/iot-ui';
+
+type VehicleViolationRow = {
+    id: number;
+    vehicle_description: string;
+    violation_type: string;
+    description: string;
+    actions_taken: string;
+    occurred_at: string;
+};
+
+type Paginator<T> = {
+    data: T[];
+    current_page: number;
+    last_page: number;
+    total: number;
+    links: { url: string | null; label: string; active: boolean }[];
+};
 
 type Props = {
     site: { id: number; name: string };
-    vehicleViolations: {
-        id: number;
-        vehicle_description: string;
-        violation_type: string;
-        description: string;
-        actions_taken: string;
-        occurred_at: string;
-    }[];
+    vehicleViolations: Paginator<VehicleViolationRow>;
+    filters: IotTimeRangeFilters;
     vehicleViolationTypes: EnumOption[];
     permissions: { canLogVehicle: boolean };
 };
@@ -43,6 +65,7 @@ type Props = {
 export default function LsrVehicleViolations({
     site,
     vehicleViolations,
+    filters,
     vehicleViolationTypes,
     permissions,
 }: Props) {
@@ -56,8 +79,10 @@ export default function LsrVehicleViolations({
             <ConceptPageShell>
                 <ConceptPageHeader
                     title="Vehicle violations"
-                    description={`UDPM §vii vehicle violation log for ${siteName}`}
-                />
+                    description={`${vehicleViolations.total.toLocaleString()} records in ${filters.label.toLowerCase()} — ${siteName}`}
+                >
+                    <IotTimeRangeSelect filters={filters} />
+                </ConceptPageHeader>
 
                 <ConceptTableCard>
                     <div className="flex items-center justify-between border-b p-4">
@@ -128,19 +153,37 @@ export default function LsrVehicleViolations({
                                 <TableHead>Type</TableHead>
                                 <TableHead>Description</TableHead>
                                 <TableHead>Actions</TableHead>
+                                <TableHead>Occurred</TableHead>
+                                <TableHead />
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {vehicleViolations.map((v) => (
+                            {vehicleViolations.data.map((v) => (
                                 <TableRow key={v.id}>
-                                    <TableCell>{v.vehicle_description}</TableCell>
-                                    <TableCell>{v.violation_type}</TableCell>
-                                    <TableCell>{v.description}</TableCell>
-                                    <TableCell>{v.actions_taken}</TableCell>
+                                    <TableCell>
+                                        <Link
+                                            href={vehicleViolationShow(v.id)}
+                                            className="font-medium text-primary hover:underline"
+                                        >
+                                            {v.vehicle_description}
+                                        </Link>
+                                    </TableCell>
+                                    <TableCell>{v.violation_type.replace(/_/g, ' ')}</TableCell>
+                                    <TableCell className="max-w-xs truncate">{v.description}</TableCell>
+                                    <TableCell className="max-w-xs truncate">{v.actions_taken}</TableCell>
+                                    <TableCell>
+                                        <IotRelativeTime iso={v.occurred_at} />
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                        <IotViewLink href={vehicleViolationShow(v.id)} />
+                                    </TableCell>
                                 </TableRow>
                             ))}
                         </TableBody>
                     </Table>
+                    <div className="px-4 pb-4">
+                        <ConceptPagination links={vehicleViolations.links} />
+                    </div>
                 </ConceptTableCard>
             </ConceptPageShell>
         </>

@@ -10,8 +10,10 @@ use App\Models\EquipmentAsset;
 use App\Models\LsrViolationLog;
 use App\Models\VehicleViolationLog;
 use App\Models\WorkerRecord;
+use App\Support\Iot\IotTimeRange;
 use App\Support\IotAnalytics;
 use App\Support\SiteGuardEnums;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
@@ -27,7 +29,7 @@ class LsrViolationController extends Controller implements HasMiddleware
     {
         return [
             new Middleware('permission:lsr.view', only: ['overview', 'violations', 'show']),
-            new Middleware('permission:lsr.view|vehicle_violations.log', only: ['vehicleViolations']),
+            new Middleware('permission:lsr.view|vehicle_violations.log', only: ['vehicleViolations', 'showVehicleViolation']),
             new Middleware('permission:lsr.log_manual', only: ['store']),
             new Middleware('permission:lsr.actions_update', only: ['updateActions']),
             new Middleware('permission:vehicle_violations.log', only: ['storeVehicle']),
@@ -38,12 +40,16 @@ class LsrViolationController extends Controller implements HasMiddleware
     {
         $site = $this->selectedSite($request);
 
+        $selectedDays = IotTimeRange::chartDaysFromRequest($request);
+        $chartDays = IotTimeRange::effectiveChartDays($selectedDays);
+
         return Inertia::render('iot/lsr/overview', [
             'site' => ['id' => $site->id, 'name' => $site->name],
-            'summary' => $this->summary($site),
-            'categoryBreakdown' => $this->categoryBreakdown($site),
+            'summary' => $this->summary($site, $selectedDays),
+            'categoryBreakdown' => $this->categoryBreakdown($site, $selectedDays),
             'automatedCategories' => SiteGuardEnums::lsrAutomatedCategories(),
-            'analytics' => $iotAnalytics->lsrPageAnalytics($site->id),
+            'analytics' => $iotAnalytics->lsrPageAnalytics($site->id, $chartDays),
+            'filters' => IotTimeRange::chartFilters($request),
         ]);
     }
 
@@ -51,9 +57,12 @@ class LsrViolationController extends Controller implements HasMiddleware
     {
         $site = $this->selectedSite($request);
 
+        $listDays = IotTimeRange::listDaysFromRequest($request);
+
         return Inertia::render('iot/lsr/violations', [
             'site' => ['id' => $site->id, 'name' => $site->name],
-            'violations' => $this->violationsList($site),
+            'violations' => $this->violationsList($site, $listDays, $request),
+            'filters' => IotTimeRange::listFilters($request),
             'lsrCategories' => SiteGuardEnums::lsrManualCategories(),
             'lsrCategoryOptions' => collect(SiteGuardEnums::lsrManualCategories())
                 ->map(fn (string $label, string $code): array => ['value' => $code, 'label' => $label])
@@ -70,22 +79,30 @@ class LsrViolationController extends Controller implements HasMiddleware
     {
         $site = $this->selectedSite($request);
 
+        $listDays = IotTimeRange::listDaysFromRequest($request);
+
+        $vehicleQuery = VehicleViolationLog::query()
+            ->where('site_id', $site->id)
+            ->orderByDesc('occurred_at');
+
+        IotTimeRange::applySince($vehicleQuery, 'occurred_at', $listDays);
+
+        $vehicleViolations = $vehicleQuery
+            ->paginate(IotTimeRange::perPage())
+            ->withQueryString()
+            ->through(fn (VehicleViolationLog $log): array => [
+                'id' => $log->id,
+                'vehicle_description' => $log->vehicle_description,
+                'violation_type' => $log->violation_type,
+                'description' => $log->description,
+                'actions_taken' => $log->actions_taken,
+                'occurred_at' => $log->occurred_at->toIso8601String(),
+            ]);
+
         return Inertia::render('iot/lsr/vehicle-violations', [
             'site' => ['id' => $site->id, 'name' => $site->name],
-            'vehicleViolations' => VehicleViolationLog::query()
-                ->where('site_id', $site->id)
-                ->orderByDesc('occurred_at')
-                ->limit(50)
-                ->get()
-                ->map(fn (VehicleViolationLog $log): array => [
-                    'id' => $log->id,
-                    'vehicle_description' => $log->vehicle_description,
-                    'violation_type' => $log->violation_type,
-                    'description' => $log->description,
-                    'actions_taken' => $log->actions_taken,
-                    'occurred_at' => $log->occurred_at->toIso8601String(),
-                    'alert_id' => $log->alert_id,
-                ]),
+            'vehicleViolations' => $vehicleViolations,
+            'filters' => IotTimeRange::listFilters($request),
             'vehicleViolationTypes' => SiteGuardEnums::options('vehicle_violation_types'),
             'vehicleAssets' => EquipmentAsset::query()
                 ->where('site_id', $site->id)
@@ -105,24 +122,32 @@ class LsrViolationController extends Controller implements HasMiddleware
     /**
      * @return array<string, int>
      */
-    private function summary($site): array
+    private function summary($site, int $selectedDays = 90): array
     {
+        $violationQuery = LsrViolationLog::query()->where('site_id', $site->id);
+        IotTimeRange::applySince($violationQuery, 'occurred_at', $selectedDays);
+
+        $vehicleQuery = VehicleViolationLog::query()->where('site_id', $site->id);
+        IotTimeRange::applySince($vehicleQuery, 'occurred_at', $selectedDays);
+
         return [
-            'total' => LsrViolationLog::query()->where('site_id', $site->id)->count(),
-            'automated' => LsrViolationLog::query()->where('site_id', $site->id)->where('detection_mode', 'automated')->count(),
-            'manual' => LsrViolationLog::query()->where('site_id', $site->id)->where('detection_mode', 'manual')->count(),
-            'missing_actions' => LsrViolationLog::query()->where('site_id', $site->id)->whereNull('actions_taken')->count(),
-            'vehicle_violations' => VehicleViolationLog::query()->where('site_id', $site->id)->count(),
+            'total' => (clone $violationQuery)->count(),
+            'automated' => (clone $violationQuery)->where('detection_mode', 'automated')->count(),
+            'manual' => (clone $violationQuery)->where('detection_mode', 'manual')->count(),
+            'missing_actions' => (clone $violationQuery)->whereNull('actions_taken')->count(),
+            'vehicle_violations' => $vehicleQuery->count(),
         ];
     }
 
     /**
      * @return list<array{category: string, count: int}>
      */
-    private function categoryBreakdown($site): array
+    private function categoryBreakdown($site, int $selectedDays = 90): array
     {
-        return LsrViolationLog::query()
-            ->where('site_id', $site->id)
+        $query = LsrViolationLog::query()->where('site_id', $site->id);
+        IotTimeRange::applySince($query, 'occurred_at', $selectedDays);
+
+        return $query
             ->selectRaw('lsr_category, count(*) as total')
             ->groupBy('lsr_category')
             ->orderByDesc('total')
@@ -138,14 +163,18 @@ class LsrViolationController extends Controller implements HasMiddleware
     /**
      * @return list<array<string, mixed>>
      */
-    private function violationsList($site): array
+    private function violationsList($site, int $listDays, Request $request): LengthAwarePaginator
     {
-        return LsrViolationLog::query()
+        $query = LsrViolationLog::query()
             ->where('site_id', $site->id)
-            ->orderByDesc('occurred_at')
-            ->limit(100)
-            ->get()
-            ->map(fn (LsrViolationLog $log): array => [
+            ->orderByDesc('occurred_at');
+
+        IotTimeRange::applySince($query, 'occurred_at', $listDays);
+
+        return $query
+            ->paginate(IotTimeRange::perPage())
+            ->withQueryString()
+            ->through(fn (LsrViolationLog $log): array => [
                 'id' => $log->id,
                 'lsr_category' => $log->lsr_category,
                 'detection_mode' => $log->detection_mode,
@@ -153,8 +182,47 @@ class LsrViolationController extends Controller implements HasMiddleware
                 'actions_taken' => $log->actions_taken,
                 'occurred_at' => $log->occurred_at->toIso8601String(),
                 'alert_id' => $log->alert_id,
-            ])
-            ->all();
+            ]);
+    }
+
+    public function showVehicleViolation(Request $request, VehicleViolationLog $vehicleViolation): Response
+    {
+        $site = $this->selectedSite($request);
+        abort_unless((int) $vehicleViolation->site_id === (int) $site->id, 404);
+
+        $vehicleViolation->load([
+            'equipmentAsset:id,name,equipment_id,equipment_type',
+            'loggedBy:id,name',
+            'camera:id,name',
+        ]);
+
+        $typeOption = collect(SiteGuardEnums::options('vehicle_violation_types'))
+            ->firstWhere('value', $vehicleViolation->violation_type);
+        $typeLabel = $typeOption['label'] ?? $vehicleViolation->violation_type;
+
+        return Inertia::render('iot/vehicle-violation-show', [
+            'site' => ['id' => $site->id, 'name' => $site->name],
+            'violation' => [
+                'id' => $vehicleViolation->id,
+                'vehicle_description' => $vehicleViolation->vehicle_description,
+                'violation_type' => $vehicleViolation->violation_type,
+                'violation_type_label' => $typeLabel,
+                'description' => $vehicleViolation->description,
+                'actions_taken' => $vehicleViolation->actions_taken,
+                'occurred_at' => $vehicleViolation->occurred_at->toIso8601String(),
+            ],
+            'equipmentAsset' => $vehicleViolation->equipmentAsset ? [
+                'id' => $vehicleViolation->equipmentAsset->id,
+                'name' => $vehicleViolation->equipmentAsset->name,
+                'equipment_id' => $vehicleViolation->equipmentAsset->equipment_id,
+                'equipment_type' => $vehicleViolation->equipmentAsset->equipment_type,
+            ] : null,
+            'camera' => $vehicleViolation->camera ? [
+                'id' => $vehicleViolation->camera->id,
+                'name' => $vehicleViolation->camera->name,
+            ] : null,
+            'loggedBy' => $vehicleViolation->loggedBy ? ['name' => $vehicleViolation->loggedBy->name] : null,
+        ]);
     }
 
     public function show(Request $request, LsrViolationLog $violation): Response

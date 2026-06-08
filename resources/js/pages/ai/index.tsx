@@ -2,7 +2,15 @@ import { Form, Head, router } from '@inertiajs/react';
 import { Loader2, Send } from 'lucide-react';
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import AiChatMessage from '@/components/ai/ai-chat-message';
-import { ConceptPageHeader, ConceptPageShell, ConceptTableCard } from '@/components/concepts';
+import {
+    ConceptPageHeader,
+    ConceptPageShell,
+    ConceptPagination,
+    ConceptTableCard,
+    TimeRangeSelect,
+    type TimeRangeFilters,
+} from '@/components/concepts';
+import type { Paginator } from '@/types/pagination';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,7 +27,8 @@ type Props = {
     site: { id: number; name: string };
     aiEnabled: boolean;
     aiConfigured: boolean;
-    sessions: Session[];
+    sessions: Paginator<Session>;
+    filters: TimeRangeFilters;
     messages: Message[];
     activeSessionId: number | null;
 };
@@ -29,6 +38,7 @@ export default function AiIndex({
     aiEnabled,
     aiConfigured,
     sessions,
+    filters,
     messages: initialMessages,
     activeSessionId,
 }: Props) {
@@ -140,8 +150,10 @@ export default function AiIndex({
             <ConceptPageShell>
                 <ConceptPageHeader
                     title="Safety assistant"
-                    description={`Ask about ${siteName} — alerts, cameras, rules, investigations, and trends. Answers use live site data only.`}
-                />
+                    description={`${sessions.total.toLocaleString()} sessions in ${filters.label.toLowerCase()} — ${siteName}`}
+                >
+                    <TimeRangeSelect filters={filters} />
+                </ConceptPageHeader>
                 {! aiConfigured ? (
                     <p className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-900 dark:text-amber-100">
                         Add an OpenAI API key in{' '}
@@ -162,7 +174,7 @@ export default function AiIndex({
                                 )}
                             </Form>
                             <ul className="space-y-1 text-sm">
-                                {sessions.map((session) => (
+                                {sessions.data.map((session) => (
                                     <li key={session.id}>
                                         <button
                                             type="button"
@@ -176,6 +188,7 @@ export default function AiIndex({
                                     </li>
                                 ))}
                             </ul>
+                            <ConceptPagination links={sessions.links} className="pt-0" />
                         </div>
                     </ConceptTableCard>
                     <ConceptTableCard

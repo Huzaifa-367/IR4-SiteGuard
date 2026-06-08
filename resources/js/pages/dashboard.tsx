@@ -28,7 +28,13 @@ import {
     type OperationsPulseItem,
 } from '@/components/dashboard/dashboard-operations-pulse';
 import { DashboardSection } from '@/components/dashboard/dashboard-section';
-import { ConceptPageHeader, ConceptPageShell } from '@/components/concepts';
+import {
+    ConceptPageHeader,
+    ConceptPageShell,
+    TimeRangeSelect,
+    iotChartRangeLabel,
+    type TimeRangeFilters,
+} from '@/components/concepts';
 import { dashboard } from '@/routes';
 import { index as alertsIndex } from '@/routes/alerts';
 import { index as reportsIndex } from '@/routes/reports';
@@ -36,6 +42,8 @@ import { index as reportsIndex } from '@/routes/reports';
 type DashboardProps = {
     scopeLabel: string;
     updatedAt: string;
+    filters: TimeRangeFilters;
+    chartDays: number;
     kpis: DashboardKpi[];
     criticalAlerts: CriticalAlert[];
     recentAlerts: RecentAlert[];
@@ -69,6 +77,8 @@ function formatUpdatedAt(iso: string): string {
 export default function Dashboard({
     scopeLabel,
     updatedAt,
+    filters,
+    chartDays,
     kpis,
     criticalAlerts,
     recentAlerts,
@@ -82,14 +92,17 @@ export default function Dashboard({
     trend,
     iot,
 }: DashboardProps) {
+    const rangeLabel = iotChartRangeLabel(chartDays, filters.days);
+
     return (
         <>
             <Head title="Dashboard" />
             <ConceptPageShell className="gap-5">
                 <ConceptPageHeader
                     title="Safety posture"
-                    description={`${scopeLabel} · Last 24h · Updated ${formatUpdatedAt(updatedAt)}`}
+                    description={`${scopeLabel} · ${rangeLabel} · Updated ${formatUpdatedAt(updatedAt)}`}
                 >
+                    <TimeRangeSelect filters={filters} />
                     <div className="flex flex-wrap gap-2">
                         <Link
                             href={reportsIndex()}
@@ -125,7 +138,7 @@ export default function Dashboard({
 
                 <DashboardSection
                     title="Alert intelligence"
-                    description="Volume, severity, workflow, and latest activity"
+                    description={`Volume, severity, workflow — ${rangeLabel}`}
                     action={
                         <Link href={alertsIndex()} className="text-xs font-medium text-primary hover:underline">
                             Alert centre →
@@ -152,7 +165,7 @@ export default function Dashboard({
 
                 <DashboardSection
                     title="Activity patterns"
-                    description="When alerts fire and how detection volume tracks acknowledgement"
+                    description={`Alert timing and acknowledgement trends — ${rangeLabel}`}
                 >
                     <div className="grid gap-3 xl:grid-cols-5">
                         <div className="xl:col-span-3">
@@ -171,10 +184,10 @@ export default function Dashboard({
                 {iot !== null ? (
                     <DashboardSection
                         title="IoT & instrumented data"
-                        description="RFID headcount, gas, environmental sensors — last 24h"
+                        description={`RFID headcount, gas, environmental sensors — ${rangeLabel}`}
                         accent="iot"
                     >
-                        <DashboardIotSection iot={iot} />
+                        <DashboardIotSection iot={iot} rangeLabel={rangeLabel} />
                     </DashboardSection>
                 ) : null}
             </ConceptPageShell>

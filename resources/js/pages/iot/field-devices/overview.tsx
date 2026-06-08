@@ -10,13 +10,17 @@ import {
 import {
     ConceptPageHeader,
     ConceptPageShell,
+    TimeRangeSelect,
+    type TimeRangeFilters,
 } from '@/components/concepts';
 import { useSiteContext } from '@/hooks/use-site-context';
 import { overview as fieldDevicesOverview } from '@/routes/iot/field-devices';
 
 type Props = {
     site: { id: number; name: string };
+    filters: TimeRangeFilters;
     analytics: {
+        chartDays: number;
         deviceHealth: DeviceHealthRow[];
         inventorySummary?: {
             edge: number;
@@ -37,7 +41,7 @@ type Props = {
     };
 };
 
-export default function FieldDevicesOverview({ site, analytics }: Props) {
+export default function FieldDevicesOverview({ site, analytics, filters }: Props) {
     const { selectedSite } = useSiteContext();
     const siteName = selectedSite?.name ?? site.name;
 
@@ -47,8 +51,10 @@ export default function FieldDevicesOverview({ site, analytics }: Props) {
             <ConceptPageShell>
                 <ConceptPageHeader
                     title="Field devices"
-                    description={`Edge, RFID, gas, and sensor endpoints for ${siteName} (IR4 §7 — 8 RFID readers, 3 gas units per site)`}
-                />
+                    description={`Edge, RFID, gas, and sensor endpoints for ${siteName} (IR4 §7)`}
+                >
+                    <TimeRangeSelect filters={filters} />
+                </ConceptPageHeader>
 
                 <div className="space-y-4">
                     {analytics.inventorySummary ? (

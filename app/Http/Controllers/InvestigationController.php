@@ -7,6 +7,7 @@ use App\Http\Requests\StoreInvestigationRequest;
 use App\Models\Alert;
 use App\Models\Investigation;
 use App\Models\User;
+use App\Support\Iot\IotTimeRange;
 use App\Support\MediaObjectUrl;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -29,18 +30,27 @@ class InvestigationController extends Controller implements HasMiddleware
     public function index(Request $request): Response
     {
         $site = $this->selectedSite($request);
-        $query = $site->investigations()->with(['assignedUser:id,name'])->latest('opened_at');
+        $listDays = IotTimeRange::listDaysFromRequest($request);
 
-        return Inertia::render('investigations/index', [
-            'site' => ['id' => $site->id, 'name' => $site->name],
-            'investigations' => $query->get()->map(fn (Investigation $inv): array => [
+        $query = $site->investigations()->with(['assignedUser:id,name'])->latest('opened_at');
+        IotTimeRange::applySince($query, 'opened_at', $listDays);
+
+        $investigations = $query
+            ->paginate(IotTimeRange::perPage())
+            ->withQueryString()
+            ->through(fn (Investigation $inv): array => [
                 'id' => $inv->id,
                 'title' => $inv->title,
                 'status' => $inv->status,
                 'assigned_user' => $inv->assignedUser?->name,
                 'opened_at' => $inv->opened_at?->toIso8601String(),
                 'alerts_count' => $inv->alerts()->count(),
-            ]),
+            ]);
+
+        return Inertia::render('investigations/index', [
+            'site' => ['id' => $site->id, 'name' => $site->name],
+            'investigations' => $investigations,
+            'filters' => IotTimeRange::listFilters($request),
             'users' => User::query()->orderBy('name')->get(['id', 'name']),
         ]);
     }

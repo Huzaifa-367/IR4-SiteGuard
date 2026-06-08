@@ -5,6 +5,8 @@ import {
     ConceptPageShell,
     ConceptPagination,
     ConceptTableCard,
+    TimeRangeSelect,
+    type TimeRangeFilters,
 } from '@/components/concepts';
 import { EnumSelect, type EnumOption } from '@/components/siteguard/enum-select';
 import { IotRelativeTime } from '@/components/iot/iot-ui';
@@ -44,18 +46,18 @@ type Paginator<T> = {
 
 type AlertsIndexProps = {
     alerts: Paginator<AlertRow>;
-    filters: { status: string };
+    filters: { status: string } & TimeRangeFilters;
     statusOptions: EnumOption[];
 };
 
 export default function AlertsIndex({ alerts, filters, statusOptions }: AlertsIndexProps) {
     const applyStatus = useCallback((status: string) => {
         router.get(
-            alertsIndex({ query: status ? { status } : {} }),
-            {},
+            alertsIndex(),
+            { status: status || undefined, days: filters.days },
             { preserveState: true, preserveScroll: true },
         );
-    }, []);
+    }, [filters.days]);
 
     return (
         <>
@@ -63,8 +65,10 @@ export default function AlertsIndex({ alerts, filters, statusOptions }: AlertsIn
             <ConceptPageShell>
                 <ConceptPageHeader
                     title="Alerts"
-                    description="Safety alerts raised from detection rules."
-                />
+                    description={`${alerts.total.toLocaleString()} alerts in ${filters.label.toLowerCase()}`}
+                >
+                    <TimeRangeSelect filters={filters} />
+                </ConceptPageHeader>
                 <ConceptTableCard>
                     <div className="flex flex-wrap items-end gap-3 border-b px-4 py-3">
                         <div className="min-w-[10rem]">

@@ -16,6 +16,11 @@ class SiteGuardAiDataService
 {
     public function __construct(private Site $site) {}
 
+    private function iot(): SiteGuardAiIotDataService
+    {
+        return new SiteGuardAiIotDataService($this->site);
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -108,6 +113,7 @@ class SiteGuardAiDataService
             'detection_modules' => [
                 'enabled' => $enabledModules,
             ],
+            'iot' => $this->iot()->summary(),
             'as_of' => $now->toIso8601String(),
         ];
     }

@@ -2,7 +2,13 @@ import { Form, Head, Link } from '@inertiajs/react';
 import { Plus } from 'lucide-react';
 import { useState } from 'react';
 import { IotViewLink } from '@/components/iot/iot-module-layout';
-import { ConceptPageHeader, ConceptPageShell, ConceptTableCard } from '@/components/concepts';
+import {
+    ConceptPageHeader,
+    ConceptPageShell,
+    ConceptPagination,
+    ConceptTableCard,
+} from '@/components/concepts';
+import { IotTimeRangeSelect, type IotTimeRangeFilters } from '@/components/iot/iot-time-range-select';
 import { IotHealthBadge, IotRelativeTime } from '@/components/iot/iot-ui';
 import { EnumSelect, type EnumOption } from '@/components/siteguard/enum-select';
 import InputError from '@/components/input-error';
@@ -30,17 +36,28 @@ import LsrViolationController from '@/actions/App/Http/Controllers/LsrViolationC
 import { overview as lsrOverview, show as lsrShow } from '@/routes/iot/lsr';
 import { index as lsrViolationsIndex } from '@/routes/iot/lsr/violations';
 
+type ViolationRow = {
+    id: number;
+    lsr_category: string;
+    detection_mode: string;
+    description: string;
+    actions_taken: string | null;
+    occurred_at: string;
+    alert_id: number | null;
+};
+
+type Paginator<T> = {
+    data: T[];
+    current_page: number;
+    last_page: number;
+    total: number;
+    links: { url: string | null; label: string; active: boolean }[];
+};
+
 type Props = {
     site: { id: number; name: string };
-    violations: {
-        id: number;
-        lsr_category: string;
-        detection_mode: string;
-        description: string;
-        actions_taken: string | null;
-        occurred_at: string;
-        alert_id: number | null;
-    }[];
+    violations: Paginator<ViolationRow>;
+    filters: IotTimeRangeFilters;
     lsrCategoryOptions: EnumOption[];
     permissions: {
         canLogManual: boolean;
@@ -48,7 +65,7 @@ type Props = {
     };
 };
 
-export default function LsrViolations({ site, violations, lsrCategoryOptions, permissions }: Props) {
+export default function LsrViolations({ site, violations, filters, lsrCategoryOptions, permissions }: Props) {
     const { selectedSite } = useSiteContext();
     const siteName = selectedSite?.name ?? site.name;
     const [manualOpen, setManualOpen] = useState(false);
@@ -59,8 +76,9 @@ export default function LsrViolations({ site, violations, lsrCategoryOptions, pe
             <ConceptPageShell>
                 <ConceptPageHeader
                     title="LSR violations"
-                    description={`Violation log and manual permit workflows for ${siteName}`}
+                    description={`${violations.total.toLocaleString()} violations in ${filters.label.toLowerCase()} — ${siteName}`}
                 >
+                    <IotTimeRangeSelect filters={filters} />
                     {permissions.canLogManual ? (
                         <Dialog open={manualOpen} onOpenChange={setManualOpen}>
                             <DialogTrigger asChild>
@@ -118,7 +136,9 @@ export default function LsrViolations({ site, violations, lsrCategoryOptions, pe
                 <ConceptTableCard>
                     <div className="border-b p-4">
                         <h2 className="font-semibold">LSR violations</h2>
-                        <p className="text-sm text-muted-foreground">{violations.length} recent records — open any row for traceability</p>
+                        <p className="text-sm text-muted-foreground">
+                            Page {violations.current_page} of {violations.last_page} — open any row for traceability
+                        </p>
                     </div>
                     <Table>
                         <TableHeader>
@@ -132,7 +152,7 @@ export default function LsrViolations({ site, violations, lsrCategoryOptions, pe
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {violations.map((v) => (
+                            {violations.data.map((v) => (
                                 <TableRow key={v.id}>
                                     <TableCell className="font-mono text-xs">
                                         {v.alert_id ? (
@@ -181,6 +201,9 @@ export default function LsrViolations({ site, violations, lsrCategoryOptions, pe
                             ))}
                         </TableBody>
                     </Table>
+                    <div className="px-4 pb-4">
+                        <ConceptPagination links={violations.links} />
+                    </div>
                 </ConceptTableCard>
             </ConceptPageShell>
         </>

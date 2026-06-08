@@ -12,6 +12,7 @@ use App\Models\Investigation;
 use App\Models\LsrViolationLog;
 use App\Models\Site;
 use App\Models\User;
+use App\Support\Iot\IotTimeRange;
 use Carbon\CarbonInterface;
 use Carbon\CarbonPeriod;
 use Illuminate\Database\Eloquent\Builder;
@@ -54,22 +55,29 @@ class DashboardAnalytics
         $user = $request->user();
         $scopeLabel = $this->scopeLabel($request, $selectedSiteManager, $siteIds);
         $now = now();
+        $selectedDays = IotTimeRange::chartDaysFromRequest($request);
+        $chartDays = IotTimeRange::effectiveChartDays($selectedDays);
+        $sparklineDays = min($chartDays, 14);
+        $heatmapDays = min($chartDays, 14);
+        $trendDays = min($chartDays, 90);
 
         return [
             'scopeLabel' => $scopeLabel,
             'updatedAt' => $now->toIso8601String(),
-            'kpis' => $this->kpis($siteIds, $now),
-            'criticalAlerts' => $this->criticalAlerts($siteIds),
-            'alertsByModule' => $this->alertsByModule($siteIds, $now),
-            'alertsBySeverity' => $this->alertsBySeverity($siteIds),
-            'siteHealthScores' => $this->siteHealthScores($siteIds, $user),
-            'alertHeatmap' => $this->alertHeatmap($siteIds, $now),
+            'filters' => IotTimeRange::chartFilters($request),
+            'chartDays' => $chartDays,
+            'kpis' => $this->kpis($siteIds, $now, $chartDays, $sparklineDays, IotTimeRange::chartFilters($request)['label']),
+            'criticalAlerts' => $this->criticalAlerts($siteIds, $selectedDays),
+            'alertsByModule' => $this->alertsByModule($siteIds, $now, $chartDays),
+            'alertsBySeverity' => $this->alertsBySeverity($siteIds, $selectedDays),
+            'siteHealthScores' => $this->siteHealthScores($siteIds, $user, $chartDays),
+            'alertHeatmap' => $this->alertHeatmap($siteIds, $now, $heatmapDays),
             'camerasNeedingAttention' => $this->camerasNeedingAttention($siteIds),
-            'trend' => $this->trend($siteIds, $now),
-            'recentAlerts' => $this->recentAlerts($siteIds),
-            'alertStatusBreakdown' => $this->alertStatusBreakdown($siteIds, $now),
-            'operationsPulse' => $this->operationsPulse($siteIds, $user),
-            'iot' => $this->iotAnalytics->dashboardSnapshot($siteIds, $user),
+            'trend' => $this->trend($siteIds, $now, $trendDays),
+            'recentAlerts' => $this->recentAlerts($siteIds, $chartDays),
+            'alertStatusBreakdown' => $this->alertStatusBreakdown($siteIds, $now, $chartDays),
+            'operationsPulse' => $this->operationsPulse($siteIds, $user, $selectedDays),
+            'iot' => $this->iotAnalytics->dashboardSnapshot($siteIds, $user, $chartDays),
         ];
     }
 
@@ -100,7 +108,7 @@ class DashboardAnalytics
      * @param  Collection<int, int>  $siteIds
      * @return array<int, array<string, mixed>>
      */
-    private function kpis(Collection $siteIds, CarbonInterface $now): array
+    private function kpis(Collection $siteIds, CarbonInterface $now, int $chartDays, int $sparklineDays, string $rangeLabel): array
     {
         $openNow = $this->alertsQuery($siteIds)->where('status', 'open')->count();
         $criticalNow = $this->alertsQuery($siteIds)
@@ -117,10 +125,9 @@ class DashboardAnalytics
         $camerasOnline = $this->camerasQuery($siteIds)->where('health_status', 'online')->count();
         $onlinePct = $camerasTotal > 0 ? (int) round(($camerasOnline / $camerasTotal) * 100) : 0;
 
-        $avgAckMinutes = $this->averageAcknowledgeMinutes($siteIds, $now);
-        $fpRate = $this->falsePositiveRate($siteIds, $now);
-
-        $openSparkline = $this->dailyOpenAlertCounts($siteIds, $now, 14);
+        $avgAckMinutes = $this->averageAcknowledgeMinutes($siteIds, $now, $chartDays);
+        $fpRate = $this->falsePositiveRate($siteIds, $now, $chartDays);
+        $openSparkline = $this->dailyOpenAlertCounts($siteIds, $now, $sparklineDays);
         $events24h = DetectionEvent::query()
             ->when($siteIds->isNotEmpty(), fn (Builder $q) => $q->whereIn('site_id', $siteIds))
             ->where('received_at', '>=', $now->copy()->subDay())
@@ -143,7 +150,7 @@ class DashboardAnalytics
                 'hint' => 'vs yesterday',
                 'delta' => $criticalNow - $criticalYesterday,
                 'deltaLabel' => 'vs prior day',
-                'sparkline' => $this->dailyCriticalOpenCounts($siteIds, $now, 14),
+                'sparkline' => $this->dailyCriticalOpenCounts($siteIds, $now, $sparklineDays),
             ],
             [
                 'key' => 'cameras_online',
@@ -158,7 +165,7 @@ class DashboardAnalytics
                 'key' => 'avg_ack',
                 'label' => 'Avg ack time',
                 'value' => $avgAckMinutes !== null ? "{$avgAckMinutes} min" : '—',
-                'hint' => 'Rolling 7 days',
+                'hint' => $rangeLabel,
                 'delta' => null,
                 'deltaLabel' => 'target 15m',
                 'sparkline' => [],
@@ -167,7 +174,7 @@ class DashboardAnalytics
                 'key' => 'fp_rate',
                 'label' => 'FP rate',
                 'value' => $fpRate !== null ? "{$fpRate}%" : '—',
-                'hint' => 'Dismissed last 7d',
+                'hint' => "Dismissed · {$rangeLabel}",
                 'delta' => null,
                 'deltaLabel' => 'target <20%',
                 'sparkline' => [],
@@ -179,7 +186,7 @@ class DashboardAnalytics
                 'hint' => 'Detection ingest',
                 'delta' => null,
                 'deltaLabel' => null,
-                'sparkline' => $this->dailyEventCounts($siteIds, $now, 14),
+                'sparkline' => $this->dailyEventCounts($siteIds, $now, $sparklineDays),
             ],
         ];
     }
@@ -188,11 +195,14 @@ class DashboardAnalytics
      * @param  Collection<int, int>  $siteIds
      * @return array<int, array<string, mixed>>
      */
-    private function recentAlerts(Collection $siteIds): array
+    private function recentAlerts(Collection $siteIds, int $chartDays): array
     {
-        return $this->alertsQuery($siteIds)
+        $query = $this->alertsQuery($siteIds)
             ->with(['site:id,name', 'detectionModule:id,key,name'])
-            ->latest('opened_at')
+            ->where('opened_at', '>=', now()->subDays(max($chartDays - 1, 0))->startOfDay())
+            ->latest('opened_at');
+
+        return $query
             ->limit(10)
             ->get()
             ->map(fn (Alert $alert): array => [
@@ -212,9 +222,9 @@ class DashboardAnalytics
      * @param  Collection<int, int>  $siteIds
      * @return array<int, array{status: string, count: int, color: string}>
      */
-    private function alertStatusBreakdown(Collection $siteIds, CarbonInterface $now): array
+    private function alertStatusBreakdown(Collection $siteIds, CarbonInterface $now, int $chartDays): array
     {
-        $since = $now->copy()->subDays(7);
+        $since = $now->copy()->subDays(max($chartDays - 1, 0))->startOfDay();
         $counts = $this->alertsQuery($siteIds)
             ->where('opened_at', '>=', $since)
             ->select('status', DB::raw('count(*) as total'))
@@ -234,49 +244,61 @@ class DashboardAnalytics
      * @param  Collection<int, int>  $siteIds
      * @return array<int, array{key: string, label: string, value: int|string, hint: string}>
      */
-    private function operationsPulse(Collection $siteIds, ?User $user): array
+    private function operationsPulse(Collection $siteIds, ?User $user, int $selectedDays = 90): array
     {
+        $openAlertsQuery = $this->alertsQuery($siteIds)->where('status', 'open');
+        IotTimeRange::applySince($openAlertsQuery, 'opened_at', $selectedDays);
+
         $items = [
             [
                 'key' => 'open_alerts',
                 'label' => 'Open alerts',
-                'value' => $this->alertsQuery($siteIds)->where('status', 'open')->count(),
+                'value' => $openAlertsQuery->count(),
                 'hint' => 'Awaiting triage',
             ],
         ];
 
         if ($user?->can('investigations.manage')) {
+            $investigationQuery = Investigation::query()
+                ->when($siteIds->isNotEmpty(), fn (Builder $q) => $q->whereIn('site_id', $siteIds))
+                ->where('status', 'open');
+
+            IotTimeRange::applySince($investigationQuery, 'opened_at', $selectedDays);
+
             $items[] = [
                 'key' => 'investigations',
                 'label' => 'Investigations',
-                'value' => Investigation::query()
-                    ->when($siteIds->isNotEmpty(), fn (Builder $q) => $q->whereIn('site_id', $siteIds))
-                    ->where('status', 'open')
-                    ->count(),
+                'value' => $investigationQuery->count(),
                 'hint' => 'Active cases',
             ];
         }
 
         if ($user?->can('hse_incidents.view')) {
+            $hseQuery = HseIncident::query()
+                ->when($siteIds->isNotEmpty(), fn (Builder $q) => $q->whereIn('site_id', $siteIds))
+                ->whereIn('status', ['draft', 'pending_classification']);
+
+            IotTimeRange::applySince($hseQuery, 'occurred_at', $selectedDays);
+
             $items[] = [
                 'key' => 'hse_pending',
                 'label' => 'HSE pending',
-                'value' => HseIncident::query()
-                    ->when($siteIds->isNotEmpty(), fn (Builder $q) => $q->whereIn('site_id', $siteIds))
-                    ->whereIn('status', ['draft', 'pending_classification'])
-                    ->count(),
+                'value' => $hseQuery->count(),
                 'hint' => 'Needs classification',
             ];
         }
 
         if ($user?->can('lsr.view')) {
+            $lsrQuery = LsrViolationLog::query()
+                ->when($siteIds->isNotEmpty(), fn (Builder $q) => $q->whereIn('site_id', $siteIds))
+                ->whereNull('actions_taken');
+
+            IotTimeRange::applySince($lsrQuery, 'occurred_at', $selectedDays);
+
             $items[] = [
                 'key' => 'lsr_open',
                 'label' => 'LSR follow-up',
-                'value' => LsrViolationLog::query()
-                    ->when($siteIds->isNotEmpty(), fn (Builder $q) => $q->whereIn('site_id', $siteIds))
-                    ->whereNull('actions_taken')
-                    ->count(),
+                'value' => $lsrQuery->count(),
                 'hint' => 'Missing corrective actions',
             ];
         }
@@ -297,12 +319,16 @@ class DashboardAnalytics
      * @param  Collection<int, int>  $siteIds
      * @return array<int, array<string, mixed>>
      */
-    private function criticalAlerts(Collection $siteIds): array
+    private function criticalAlerts(Collection $siteIds, int $selectedDays = 90): array
     {
-        return $this->alertsQuery($siteIds)
+        $query = $this->alertsQuery($siteIds)
             ->with(['site:id,name', 'camera:id,name', 'detectionModule:id,key,name'])
             ->where('status', 'open')
-            ->whereIn('severity', ['critical', 'high'])
+            ->whereIn('severity', ['critical', 'high']);
+
+        IotTimeRange::applySince($query, 'opened_at', $selectedDays);
+
+        return $query
             ->latest('opened_at')
             ->limit(6)
             ->get()
@@ -323,9 +349,9 @@ class DashboardAnalytics
      * @param  Collection<int, int>  $siteIds
      * @return array<int, array{module: string, key: string, count: int, color: string}>
      */
-    private function alertsByModule(Collection $siteIds, CarbonInterface $now): array
+    private function alertsByModule(Collection $siteIds, CarbonInterface $now, int $chartDays): array
     {
-        $since = $now->copy()->subDays(7);
+        $since = $now->copy()->subDays(max($chartDays - 1, 0))->startOfDay();
         $modules = DetectionModule::query()->orderBy('name')->get(['id', 'key', 'name']);
         $counts = $this->alertsQuery($siteIds)
             ->where('opened_at', '>=', $since)
@@ -345,10 +371,12 @@ class DashboardAnalytics
      * @param  Collection<int, int>  $siteIds
      * @return array<int, array{severity: string, count: int, color: string}>
      */
-    private function alertsBySeverity(Collection $siteIds): array
+    private function alertsBySeverity(Collection $siteIds, int $selectedDays = 90): array
     {
-        $counts = $this->alertsQuery($siteIds)
-            ->where('status', 'open')
+        $query = $this->alertsQuery($siteIds)->where('status', 'open');
+        IotTimeRange::applySince($query, 'opened_at', $selectedDays);
+
+        $counts = $query
             ->select('severity', DB::raw('count(*) as total'))
             ->groupBy('severity')
             ->pluck('total', 'severity');
@@ -366,7 +394,7 @@ class DashboardAnalytics
      * @param  Collection<int, int>  $siteIds
      * @return array<int, array<string, mixed>>
      */
-    private function siteHealthScores(Collection $siteIds, ?User $user): array
+    private function siteHealthScores(Collection $siteIds, ?User $user, int $chartDays): array
     {
         $sitesQuery = Site::query()->where('status', 'active')->orderBy('name');
 
@@ -377,9 +405,10 @@ class DashboardAnalytics
         }
 
         $sites = $sitesQuery->get(['id', 'name']);
-        $priorWeekStart = now()->subDays(14);
-        $priorWeekEnd = now()->subDays(7);
-        $currentWeekStart = now()->subDays(7);
+        $windowDays = min(max($chartDays, 7), 30);
+        $priorWeekStart = now()->subDays($windowDays * 2);
+        $priorWeekEnd = now()->subDays($windowDays);
+        $currentWeekStart = now()->subDays($windowDays);
 
         return $sites->map(function (Site $site) use ($priorWeekStart, $priorWeekEnd, $currentWeekStart): array {
             $siteId = collect([$site->id]);
@@ -404,9 +433,9 @@ class DashboardAnalytics
      * @param  Collection<int, int>  $siteIds
      * @return array{days: list<string>, hours: list<int>, cells: list<array{day: string, hour: int, count: int}>}
      */
-    private function alertHeatmap(Collection $siteIds, CarbonInterface $now): array
+    private function alertHeatmap(Collection $siteIds, CarbonInterface $now, int $heatmapDays): array
     {
-        $since = $now->copy()->subDays(7)->startOfDay();
+        $since = $now->copy()->subDays(max($heatmapDays - 1, 0))->startOfDay();
         $rows = $this->alertsQuery($siteIds)
             ->where('opened_at', '>=', $since)
             ->get(['opened_at']);
@@ -474,13 +503,13 @@ class DashboardAnalytics
      * @param  Collection<int, int>  $siteIds
      * @return array{labels: list<string>, events: list<int>, acknowledged: list<int>}
      */
-    private function trend(Collection $siteIds, CarbonInterface $now): array
+    private function trend(Collection $siteIds, CarbonInterface $now, int $trendDays): array
     {
         $labels = [];
         $events = [];
         $acknowledged = [];
 
-        for ($i = 13; $i >= 0; $i--) {
+        for ($i = $trendDays - 1; $i >= 0; $i--) {
             $day = $now->copy()->subDays($i)->startOfDay();
             $next = $day->copy()->addDay();
             $labels[] = $day->format('M j');
@@ -573,9 +602,9 @@ class DashboardAnalytics
     /**
      * @param  Collection<int, int>  $siteIds
      */
-    private function averageAcknowledgeMinutes(Collection $siteIds, CarbonInterface $now): ?int
+    private function averageAcknowledgeMinutes(Collection $siteIds, CarbonInterface $now, int $chartDays): ?int
     {
-        $since = $now->copy()->subDays(7);
+        $since = $now->copy()->subDays(max($chartDays - 1, 0))->startOfDay();
 
         $actions = AlertAction::query()
             ->where('action', 'acknowledge')
@@ -606,9 +635,9 @@ class DashboardAnalytics
     /**
      * @param  Collection<int, int>  $siteIds
      */
-    private function falsePositiveRate(Collection $siteIds, CarbonInterface $now): ?int
+    private function falsePositiveRate(Collection $siteIds, CarbonInterface $now, int $chartDays): ?int
     {
-        $since = $now->copy()->subDays(7);
+        $since = $now->copy()->subDays(max($chartDays - 1, 0))->startOfDay();
 
         $dismissed = $this->alertsQuery($siteIds)
             ->where('status', 'dismissed')

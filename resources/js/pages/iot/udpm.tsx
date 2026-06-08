@@ -1,5 +1,11 @@
 import { Form, Head, Link } from '@inertiajs/react';
-import { ConceptPageHeader, ConceptPageShell, ConceptTableCard } from '@/components/concepts';
+import {
+    ConceptPageHeader,
+    ConceptPageShell,
+    ConceptPagination,
+    ConceptTableCard,
+} from '@/components/concepts';
+import { IotTimeRangeSelect, type IotTimeRangeFilters } from '@/components/iot/iot-time-range-select';
 import { HorizontalCategoryChart, IotKpiStrip } from '@/components/iot/iot-charts';
 import { IotHealthBadge, IotRelativeTime } from '@/components/iot/iot-ui';
 import { Button } from '@/components/ui/button';
@@ -15,15 +21,26 @@ import { useSiteContext } from '@/hooks/use-site-context';
 import UdpmReportController from '@/actions/App/Http/Controllers/UdpmReportController';
 import { index as udpmIndex, show as udpmShow } from '@/routes/iot/udpm';
 
+type ReportRow = {
+    id: number;
+    week_start: string;
+    week_end: string;
+    status: string;
+    generated_at: string | null;
+};
+
+type Paginator<T> = {
+    data: T[];
+    current_page: number;
+    last_page: number;
+    total: number;
+    links: { url: string | null; label: string; active: boolean }[];
+};
+
 type Props = {
     site: { id: number; name: string };
-    reports: {
-        id: number;
-        week_start: string;
-        week_end: string;
-        status: string;
-        generated_at: string | null;
-    }[];
+    reports: Paginator<ReportRow>;
+    filters: IotTimeRangeFilters;
     permissions: { canGenerate: boolean };
     analytics: {
         byStatus: { label: string; count: number }[];
@@ -32,7 +49,7 @@ type Props = {
     };
 };
 
-export default function UdpmReports({ site, reports, permissions, analytics }: Props) {
+export default function UdpmReports({ site, reports, filters, permissions, analytics }: Props) {
     const { selectedSite } = useSiteContext();
     const siteName = selectedSite?.name ?? site.name;
 
@@ -42,8 +59,9 @@ export default function UdpmReports({ site, reports, permissions, analytics }: P
             <ConceptPageShell>
                 <ConceptPageHeader
                     title="UDPM weekly reports"
-                    description={`UDPM-GM-0058 §6.5 compliance — 6 automated, 2 manual, 2 partial (IR4 §9)`}
+                    description={`${reports.total.toLocaleString()} reports in ${filters.label.toLowerCase()} — UDPM-GM-0058 §6.5`}
                 >
+                    <IotTimeRangeSelect filters={filters} />
                     {permissions.canGenerate ? (
                         <Form {...UdpmReportController.generate.form()}>
                             {({ processing }) => (
@@ -60,7 +78,7 @@ export default function UdpmReports({ site, reports, permissions, analytics }: P
                         { key: 'sections', label: '§6.5 sections', value: analytics.compliance.sections, hint: 'UDPM-GM-0058 items' },
                         { key: 'auto', label: 'Automated', value: analytics.compliance.automated, hint: 'Fully automated sections' },
                         { key: 'manual', label: 'Manual', value: analytics.compliance.manual, hint: 'Manual workflow sections' },
-                        { key: 'reports', label: 'Reports on file', value: analytics.reportCount, hint: 'Generated weekly reports' },
+                        { key: 'reports', label: 'Reports on file', value: analytics.reportCount, hint: `In ${filters.label.toLowerCase()}` },
                     ]}
                 />
 
@@ -89,7 +107,7 @@ export default function UdpmReports({ site, reports, permissions, analytics }: P
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {reports.map((r) => (
+                            {reports.data.map((r) => (
                                 <TableRow key={r.id}>
                                     <TableCell>
                                         {r.week_start} — {r.week_end}
@@ -110,6 +128,9 @@ export default function UdpmReports({ site, reports, permissions, analytics }: P
                             ))}
                         </TableBody>
                     </Table>
+                    <div className="px-4 pb-4">
+                        <ConceptPagination links={reports.links} />
+                    </div>
                 </ConceptTableCard>
             </ConceptPageShell>
         </>

@@ -1,11 +1,15 @@
-import { Form, Head } from '@inertiajs/react';
+import { Form, Head, Link } from '@inertiajs/react';
 import { Plus } from 'lucide-react';
 import { useState } from 'react';
 import {
     ConceptPageHeader,
     ConceptPageShell,
+    ConceptPagination,
     ConceptTableCard,
+    TimeRangeSelect,
+    type TimeRangeFilters,
 } from '@/components/concepts';
+import type { Paginator } from '@/types/pagination';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import {
@@ -28,25 +32,27 @@ import {
 import { useSiteContext } from '@/hooks/use-site-context';
 import RfidOperationsController from '@/actions/App/Http/Controllers/RfidOperationsController';
 import { overview as rfidOverview } from '@/routes/iot/rfid';
-import { index as workersIndex } from '@/routes/iot/rfid/workers';
+import { index as workersIndex, show as workerShow } from '@/routes/iot/rfid/workers';
+import { IotViewLink } from '@/components/iot/iot-module-layout';
 import { IotHealthBadge } from '@/components/iot/iot-ui';
 import { type EnumOption } from '@/components/siteguard/enum-select';
 
 type Props = {
     site: { id: number; name: string };
-    workers: {
+    workers: Paginator<{
         id: number;
         full_name: string;
         contractor: string;
         tag_epc: string;
         portable_device_approved: boolean;
         role: string;
-    }[];
+    }>;
+    filters: TimeRangeFilters;
     permissions: { canManageWorkers: boolean };
     contractorOptions: EnumOption[];
 };
 
-export default function RfidWorkers({ site, workers, permissions, contractorOptions }: Props) {
+export default function RfidWorkers({ site, workers, filters, permissions, contractorOptions }: Props) {
     const { selectedSite } = useSiteContext();
     const siteName = selectedSite?.name ?? site.name;
     const [workerOpen, setWorkerOpen] = useState(false);
@@ -57,8 +63,10 @@ export default function RfidWorkers({ site, workers, permissions, contractorOpti
             <ConceptPageShell>
                 <ConceptPageHeader
                     title="Registered workers"
-                    description={`Worker tag registry for ${siteName}`}
-                />
+                    description={`${workers.total.toLocaleString()} workers in ${filters.label.toLowerCase()} — ${siteName}`}
+                >
+                    <TimeRangeSelect filters={filters} />
+                </ConceptPageHeader>
 
                 <ConceptTableCard>
                     <div className="flex items-center justify-between border-b p-4">
@@ -104,22 +112,33 @@ export default function RfidWorkers({ site, workers, permissions, contractorOpti
                                 <TableHead>Role</TableHead>
                                 <TableHead>Tag EPC</TableHead>
                                 <TableHead>Portable</TableHead>
+                                <TableHead />
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {workers.map((w) => (
+                            {workers.data.map((w) => (
                                 <TableRow key={w.id}>
-                                    <TableCell>{w.full_name}</TableCell>
+                                    <TableCell>
+                                        <Link href={workerShow(w.id)} className="font-medium text-primary hover:underline">
+                                            {w.full_name}
+                                        </Link>
+                                    </TableCell>
                                     <TableCell>{w.contractor}</TableCell>
                                     <TableCell>{w.role}</TableCell>
                                     <TableCell className="font-mono text-xs">{w.tag_epc}</TableCell>
                                     <TableCell>
                                         <IotHealthBadge status={w.portable_device_approved ? 'approved' : 'pending'} />
                                     </TableCell>
+                                    <TableCell className="text-right">
+                                        <IotViewLink href={workerShow(w.id)} />
+                                    </TableCell>
                                 </TableRow>
                             ))}
                         </TableBody>
                     </Table>
+                    <div className="px-4 pb-4">
+                        <ConceptPagination links={workers.links} />
+                    </div>
                 </ConceptTableCard>
             </ConceptPageShell>
         </>

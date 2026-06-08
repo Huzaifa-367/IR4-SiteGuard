@@ -9,6 +9,7 @@ use App\Models\AlertAction;
 use App\Models\HseIncident;
 use App\Models\Investigation;
 use App\Models\User;
+use App\Support\Iot\IotTimeRange;
 use App\Support\MediaObjectUrl;
 use App\Support\SelectedSiteManager;
 use App\Support\SiteGuardEnums;
@@ -54,7 +55,9 @@ class AlertController extends Controller implements HasMiddleware
             $query->where('status', $request->string('status'));
         }
 
-        $alerts = $query->paginate(20)->withQueryString();
+        IotTimeRange::applySince($query, 'opened_at', IotTimeRange::listDaysFromRequest($request));
+
+        $alerts = $query->paginate(IotTimeRange::perPage())->withQueryString();
 
         $alerts->through(fn (Alert $alert): array => $this->formatAlertSummary($alert));
 
@@ -62,6 +65,7 @@ class AlertController extends Controller implements HasMiddleware
             'alerts' => $alerts,
             'filters' => [
                 'status' => $request->string('status')->toString(),
+                ...IotTimeRange::listFilters($request),
             ],
             'statusOptions' => SiteGuardEnums::options('alert_statuses'),
         ]);

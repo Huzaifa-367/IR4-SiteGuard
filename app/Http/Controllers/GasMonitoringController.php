@@ -9,6 +9,7 @@ use App\Models\GasReading;
 use App\Models\SensorAlarm;
 use App\Models\SensorDevice;
 use App\Models\SensorReading;
+use App\Support\Iot\IotTimeRange;
 use App\Support\IotAnalytics;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -35,10 +36,14 @@ class GasMonitoringController extends Controller implements HasMiddleware
         $thresholds = $site->settings['gas_thresholds']
             ?? config('siteguard.gas_thresholds');
 
+        $selectedDays = IotTimeRange::chartDaysFromRequest($request);
+        $chartDays = IotTimeRange::effectiveChartDays($selectedDays);
+
         return Inertia::render('iot/gas/overview', [
             'site' => ['id' => $site->id, 'name' => $site->name],
             'thresholds' => $thresholds,
-            'analytics' => $iotAnalytics->gasPageAnalytics($site->id),
+            'analytics' => $iotAnalytics->gasPageAnalytics($site->id, $chartDays, $selectedDays),
+            'filters' => IotTimeRange::chartFilters($request),
             'permissions' => [
                 'canManageThresholds' => $request->user()?->can('gas_thresholds.manage') ?? false,
             ],
@@ -48,17 +53,27 @@ class GasMonitoringController extends Controller implements HasMiddleware
     public function readings(Request $request): Response
     {
         $site = $this->selectedSite($request);
+        $listDays = IotTimeRange::listDaysFromRequest($request);
+        $since = IotTimeRange::since($listDays);
 
-        $gateways = GasGateway::query()
+        $gatewayQuery = GasGateway::query()
             ->where('site_id', $site->id)
-            ->orderBy('code')
+            ->orderBy('code');
+
+        if ($since !== null) {
+            $gatewayQuery->whereHas('gasReadings', fn ($q) => $q->where('read_at', '>=', $since));
+        }
+
+        $gateways = $gatewayQuery
             ->get()
-            ->map(function (GasGateway $gateway) use ($site): array {
-                $latest = GasReading::query()
+            ->map(function (GasGateway $gateway) use ($site, $listDays): array {
+                $latestQuery = GasReading::query()
                     ->where('site_id', $site->id)
-                    ->where('gas_gateway_id', $gateway->id)
-                    ->orderByDesc('read_at')
-                    ->first();
+                    ->where('gas_gateway_id', $gateway->id);
+
+                IotTimeRange::applySince($latestQuery, 'read_at', $listDays);
+
+                $latest = $latestQuery->orderByDesc('read_at')->first();
 
                 return [
                     'id' => $gateway->id,
@@ -77,15 +92,25 @@ class GasMonitoringController extends Controller implements HasMiddleware
                 ];
             });
 
-        $sensors = SensorDevice::query()
+        $sensorQuery = SensorDevice::query()
             ->where('site_id', $site->id)
-            ->orderBy('code')
+            ->orderBy('code');
+
+        if ($since !== null) {
+            $sensorQuery->whereHas('sensorReadings', fn ($q) => $q->where('read_at', '>=', $since));
+        }
+
+        $sensors = $sensorQuery
             ->get()
-            ->map(function (SensorDevice $device) use ($site): array {
-                $latestReadings = SensorReading::query()
+            ->map(function (SensorDevice $device) use ($site, $listDays): array {
+                $readingsQuery = SensorReading::query()
                     ->where('site_id', $site->id)
                     ->where('sensor_device_id', $device->id)
-                    ->whereIn('parameter', ['co2_ppm', 'temp_c', 'humidity_pct', 'wind_speed_mps'])
+                    ->whereIn('parameter', ['co2_ppm', 'temp_c', 'humidity_pct', 'wind_speed_mps']);
+
+                IotTimeRange::applySince($readingsQuery, 'read_at', $listDays);
+
+                $latestReadings = $readingsQuery
                     ->orderByDesc('read_at')
                     ->get()
                     ->unique('parameter')
@@ -106,13 +131,16 @@ class GasMonitoringController extends Controller implements HasMiddleware
                 ];
             });
 
-        $alarms = SensorAlarm::query()
+        $alarmQuery = SensorAlarm::query()
             ->where('site_id', $site->id)
-            ->whereNull('cleared_at')
-            ->orderByDesc('alarm_at')
-            ->limit(20)
-            ->get()
-            ->map(fn (SensorAlarm $alarm): array => [
+            ->orderByDesc('alarm_at');
+
+        IotTimeRange::applySince($alarmQuery, 'alarm_at', $listDays);
+
+        $alarms = $alarmQuery
+            ->paginate(IotTimeRange::perPage())
+            ->withQueryString()
+            ->through(fn (SensorAlarm $alarm): array => [
                 'id' => $alarm->id,
                 'source_type' => $alarm->source_type,
                 'parameter' => $alarm->parameter,
@@ -121,6 +149,7 @@ class GasMonitoringController extends Controller implements HasMiddleware
                 'severity' => $alarm->severity,
                 'alarm_at' => $alarm->alarm_at->toIso8601String(),
                 'alert_id' => $alarm->alert_id,
+                'cleared_at' => $alarm->cleared_at?->toIso8601String(),
             ]);
 
         $thresholds = $site->settings['gas_thresholds']
@@ -131,6 +160,7 @@ class GasMonitoringController extends Controller implements HasMiddleware
             'gateways' => $gateways,
             'sensors' => $sensors,
             'alarms' => $alarms,
+            'filters' => IotTimeRange::listFilters($request),
             'thresholds' => $thresholds,
         ]);
     }

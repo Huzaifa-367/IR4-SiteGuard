@@ -28,13 +28,20 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useSiteContext } from '@/hooks/use-site-context';
 import GasMonitoringController from '@/actions/App/Http/Controllers/GasMonitoringController';
+import {
+    IotTimeRangeSelect,
+    iotChartRangeLabel,
+    type IotTimeRangeFilters,
+} from '@/components/iot/iot-time-range-select';
 import { overview as gasOverview } from '@/routes/iot/gas';
 
 type Props = {
     site: { id: number; name: string };
     thresholds: Record<string, Record<string, number>>;
     permissions: { canManageThresholds: boolean };
+    filters: IotTimeRangeFilters;
     analytics: {
+        chartDays: number;
         summary: {
             max_lel: number | null;
             avg_co2: number | null;
@@ -59,10 +66,11 @@ type Props = {
     };
 };
 
-export default function GasOverview({ site, thresholds, analytics, permissions }: Props) {
+export default function GasOverview({ site, thresholds, analytics, permissions, filters }: Props) {
     const { selectedSite } = useSiteContext();
     const siteName = selectedSite?.name ?? site.name;
     const [thresholdsOpen, setThresholdsOpen] = useState(false);
+    const rangeLabel = iotChartRangeLabel(analytics.chartDays, filters.days);
     const lelHigh = thresholds.lel_pct?.high ?? analytics.thresholds.lel_pct?.high;
     const co2Warning = thresholds.co2_ppm?.warning ?? analytics.thresholds.co2_ppm?.warning;
     const lelThresholds = thresholds.lel_pct;
@@ -76,6 +84,7 @@ export default function GasOverview({ site, thresholds, analytics, permissions }
                     title="Gas & environmental"
                     description={`Live 4-gas panels, CO₂, and RS485 sensors · ${siteName}`}
                 >
+                    <IotTimeRangeSelect filters={filters} />
                     {permissions.canManageThresholds ? (
                         <Dialog open={thresholdsOpen} onOpenChange={setThresholdsOpen}>
                             <DialogTrigger asChild>
@@ -132,7 +141,7 @@ export default function GasOverview({ site, thresholds, analytics, permissions }
                             key: 'lel',
                             label: 'Peak LEL',
                             value: analytics.summary.max_lel !== null ? `${analytics.summary.max_lel}%` : '—',
-                            hint: lelHigh ? `Limit ${lelHigh}%` : '24h site max',
+                            hint: lelHigh ? `Limit ${lelHigh}% · ${rangeLabel}` : rangeLabel,
                             tone: analytics.summary.max_lel !== null && lelHigh && analytics.summary.max_lel >= lelHigh ? 'danger' : undefined,
                         },
                         {
@@ -151,7 +160,7 @@ export default function GasOverview({ site, thresholds, analytics, permissions }
                             key: 'alarms',
                             label: 'Alarm events',
                             value: recentAlarms,
-                            hint: '7-day threshold breaches',
+                            hint: `${rangeLabel} threshold breaches`,
                             tone: recentAlarms > 0 ? 'warning' : undefined,
                         },
                     ]}
@@ -169,8 +178,8 @@ export default function GasOverview({ site, thresholds, analytics, permissions }
                         <div className="mt-3 grid gap-3 lg:grid-cols-2">
                             <GasMultiLineChart
                                 data={analytics.gasTrendDaily}
-                                title="Gas — 7 day trend"
-                                description="Daily site-wide averages"
+                                title={`Gas trend — ${rangeLabel}`}
+                                description="Site-wide averages over selected period"
                                 lelThresholdHigh={lelHigh}
                             />
                             <EnvironmentalTrendChart data={analytics.environmentalTrend} />

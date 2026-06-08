@@ -46,4 +46,9 @@ class VehicleViolationLog extends Model
     {
         return $this->belongsTo(User::class, 'logged_by_user_id');
     }
+
+    public function camera(): BelongsTo
+    {
+        return $this->belongsTo(Camera::class);
+    }
 }

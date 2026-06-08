@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Controllers\Concerns\UsesSelectedSite;
 use App\Http\Requests\StoreDeploymentApprovalRequest;
 use App\Models\DeploymentApproval;
+use App\Support\Iot\IotTimeRange;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
@@ -27,20 +28,50 @@ class DeploymentApprovalController extends Controller implements HasMiddleware
     {
         $site = $this->selectedSite($request);
 
+        $listDays = IotTimeRange::listDaysFromRequest($request);
+
+        $summaryQuery = DeploymentApproval::query()->where('site_id', $site->id);
+        IotTimeRange::applySince($summaryQuery, 'created_at', $listDays);
+
+        $approvalQuery = (clone $summaryQuery)->orderByDesc('created_at');
+
+        $approvals = $approvalQuery
+            ->paginate(IotTimeRange::perPage())
+            ->withQueryString()
+            ->through(fn (DeploymentApproval $row): array => [
+                'id' => $row->id,
+                'approval_type' => $row->approval_type,
+                'status' => $row->status,
+                'submitted_at' => $row->submitted_at?->toIso8601String(),
+                'approved_at' => $row->approved_at?->toIso8601String(),
+                'notes' => $row->notes,
+            ]);
+
         return Inertia::render('iot/deployment-approvals', [
             'site' => ['id' => $site->id, 'name' => $site->name],
-            'approvals' => DeploymentApproval::query()
-                ->where('site_id', $site->id)
-                ->orderByDesc('created_at')
-                ->get()
-                ->map(fn (DeploymentApproval $row): array => [
-                    'id' => $row->id,
-                    'approval_type' => $row->approval_type,
-                    'status' => $row->status,
-                    'submitted_at' => $row->submitted_at?->toIso8601String(),
-                    'approved_at' => $row->approved_at?->toIso8601String(),
-                    'notes' => $row->notes,
-                ]),
+            'approvals' => $approvals,
+            'filters' => IotTimeRange::listFilters($request),
+            'summary' => [
+                'total' => (clone $summaryQuery)->count(),
+                'submitted' => (clone $summaryQuery)->where('status', 'submitted')->count(),
+                'approved' => (clone $summaryQuery)->where('status', 'approved')->count(),
+            ],
+            'analytics' => [
+                'byStatus' => (clone $summaryQuery)
+                    ->selectRaw('status, count(*) as total')
+                    ->groupBy('status')
+                    ->orderByDesc('total')
+                    ->get()
+                    ->map(fn ($row): array => ['label' => (string) $row->status, 'count' => (int) $row->total])
+                    ->all(),
+                'byType' => (clone $summaryQuery)
+                    ->selectRaw('approval_type, count(*) as total')
+                    ->groupBy('approval_type')
+                    ->orderByDesc('total')
+                    ->get()
+                    ->map(fn ($row): array => ['label' => (string) $row->approval_type, 'count' => (int) $row->total])
+                    ->all(),
+            ],
             'commissioning_gate' => $site->settings['commissioning_gate'] ?? 'pending',
             'approval_types' => collect(config('siteguard.deployment_approval_types', []))
                 ->map(fn (string $label, string $value): array => ['value' => $value, 'label' => $label])

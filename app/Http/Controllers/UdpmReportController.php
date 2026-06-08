@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Controllers\Concerns\UsesSelectedSite;
 use App\Models\UdpmWeeklyReport;
 use App\Services\Reports\UdpmWeeklyReportService;
+use App\Support\Iot\IotTimeRange;
 use App\Support\IotAnalytics;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -34,24 +35,33 @@ class UdpmReportController extends Controller implements HasMiddleware
     {
         $site = $this->selectedSite($request);
 
+        $listDays = IotTimeRange::listDaysFromRequest($request);
+
+        $reportQuery = UdpmWeeklyReport::query()
+            ->where('site_id', $site->id)
+            ->orderByDesc('week_start');
+
+        IotTimeRange::applySince($reportQuery, 'week_start', $listDays);
+
+        $reports = $reportQuery
+            ->paginate(IotTimeRange::perPage())
+            ->withQueryString()
+            ->through(fn (UdpmWeeklyReport $report): array => [
+                'id' => $report->id,
+                'week_start' => $report->week_start->toDateString(),
+                'week_end' => $report->week_end->toDateString(),
+                'status' => $report->status,
+                'generated_at' => $report->generated_at?->toIso8601String(),
+            ]);
+
         return Inertia::render('iot/udpm', [
             'site' => ['id' => $site->id, 'name' => $site->name],
-            'reports' => UdpmWeeklyReport::query()
-                ->where('site_id', $site->id)
-                ->orderByDesc('week_start')
-                ->limit(20)
-                ->get()
-                ->map(fn (UdpmWeeklyReport $report): array => [
-                    'id' => $report->id,
-                    'week_start' => $report->week_start->toDateString(),
-                    'week_end' => $report->week_end->toDateString(),
-                    'status' => $report->status,
-                    'generated_at' => $report->generated_at?->toIso8601String(),
-                ]),
+            'reports' => $reports,
+            'filters' => IotTimeRange::listFilters($request),
             'permissions' => [
                 'canGenerate' => $request->user()?->can('udpm.generate') ?? false,
             ],
-            'analytics' => $iotAnalytics->udpmPageAnalytics($site->id),
+            'analytics' => $iotAnalytics->udpmPageAnalytics($site->id, $listDays),
         ]);
     }
 

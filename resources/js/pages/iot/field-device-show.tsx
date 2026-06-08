@@ -12,12 +12,15 @@ import { formatHumanLabel } from '@/lib/iot-format';
 import { Button } from '@/components/ui/button';
 import { useSiteContext } from '@/hooks/use-site-context';
 import FieldDeviceController from '@/actions/App/Http/Controllers/FieldDeviceController';
+import { ConceptTableCard } from '@/components/concepts';
 import {
     overview as fieldDevicesOverview,
     show as fieldDeviceShow,
 } from '@/routes/iot/field-devices';
+import { index as gasReadingsIndex } from '@/routes/iot/gas/readings';
 import { overview as gasOverview } from '@/routes/iot/gas';
 import { overview as rfidOverview } from '@/routes/iot/rfid';
+import { show as zoneShow } from '@/routes/iot/rfid/zones';
 
 type Device = {
     id: number;
@@ -26,7 +29,9 @@ type Device = {
     health_status: string;
     token_type: string;
     mount_type?: string;
+    rfid_zone_id?: number | null;
     zone?: string | null;
+    zone_code?: string | null;
     vehicle_label?: string | null;
     device_type?: string;
     last_heartbeat_at?: string | null;
@@ -40,10 +45,27 @@ type Device = {
     } | null;
 };
 
+type GasReadingRow = {
+    lel_pct: string | number;
+    o2_pct: string | number;
+    h2s_ppm: string | number;
+    co_ppm: string | number;
+    alarm_state: string;
+    read_at: string;
+};
+
+type SensorReadingRow = {
+    parameter: string;
+    value: string | number;
+    unit: string;
+    read_at: string;
+};
+
 type Props = {
     site: { id: number; name: string };
     deviceType: 'edge' | 'rfid' | 'gas' | 'sensor';
     device: Device;
+    recentReadings: GasReadingRow[] | SensorReadingRow[];
     permissions: { canManageTokens: boolean };
 };
 
@@ -54,7 +76,7 @@ const TYPE_LABELS: Record<Props['deviceType'], string> = {
     sensor: 'Sensor device',
 };
 
-export default function FieldDeviceShow({ site, deviceType, device, permissions }: Props) {
+export default function FieldDeviceShow({ site, deviceType, device, recentReadings, permissions }: Props) {
     const { selectedSite } = useSiteContext();
     const siteName = selectedSite?.name ?? site.name;
     const lastActivity = device.last_ingest_at ?? device.last_heartbeat_at;
@@ -108,10 +130,18 @@ export default function FieldDeviceShow({ site, deviceType, device, permissions 
                                     <dd>{formatHumanLabel(device.mount_type)}</dd>
                                 </div>
                             ) : null}
-                            {device.zone ? (
+                            {device.zone && device.rfid_zone_id ? (
                                 <div className="flex justify-between gap-4">
                                     <dt className="text-muted-foreground">RFID zone</dt>
-                                    <dd>{device.zone}</dd>
+                                    <dd>
+                                        <Link
+                                            href={zoneShow(device.rfid_zone_id)}
+                                            className="text-primary hover:underline"
+                                        >
+                                            {device.zone}
+                                            {device.zone_code ? ` (${device.zone_code})` : ''}
+                                        </Link>
+                                    </dd>
                                 </div>
                             ) : null}
                             {device.vehicle_label ? (
@@ -139,7 +169,10 @@ export default function FieldDeviceShow({ site, deviceType, device, permissions 
                     <IotModuleSection title="Related modules" description="Jump to operational views">
                         <div className="grid gap-2">
                             {deviceType === 'gas' ? (
-                                <IotLinkedResource label="Gas monitoring" href={gasOverview()} hint="Live readings and alarms" />
+                                <>
+                                    <IotLinkedResource label="All readings" href={gasReadingsIndex()} hint="Live gas and sensor data" />
+                                    <IotLinkedResource label="Gas overview" href={gasOverview()} hint="Thresholds and analytics" />
+                                </>
                             ) : null}
                             {deviceType === 'rfid' ? (
                                 <IotLinkedResource label="RFID / SSMS" href={rfidOverview()} hint="Zone occupancy and gate flow" />
@@ -150,6 +183,64 @@ export default function FieldDeviceShow({ site, deviceType, device, permissions 
                         </div>
                     </IotModuleSection>
                 </div>
+
+                {recentReadings.length > 0 ? (
+                    <ConceptTableCard
+                        className="mt-4"
+                        title="Recent readings"
+                        description="Last 20 ingest events for this device"
+                    >
+                        {deviceType === 'gas' ? (
+                            <table className="w-full text-sm">
+                                <thead>
+                                    <tr className="border-b text-left text-muted-foreground">
+                                        <th className="px-4 py-2 font-medium">Time</th>
+                                        <th className="px-4 py-2 font-medium">LEL</th>
+                                        <th className="px-4 py-2 font-medium">O₂</th>
+                                        <th className="px-4 py-2 font-medium">H₂S</th>
+                                        <th className="px-4 py-2 font-medium">CO</th>
+                                        <th className="px-4 py-2 font-medium">Alarm</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {(recentReadings as GasReadingRow[]).map((row, index) => (
+                                        <tr key={index} className="border-b border-border/60">
+                                            <td className="px-4 py-2"><IotRelativeTime iso={row.read_at} /></td>
+                                            <td className="px-4 py-2 tabular-nums">{row.lel_pct}%</td>
+                                            <td className="px-4 py-2 tabular-nums">{row.o2_pct}%</td>
+                                            <td className="px-4 py-2 tabular-nums">{row.h2s_ppm}</td>
+                                            <td className="px-4 py-2 tabular-nums">{row.co_ppm}</td>
+                                            <td className="px-4 py-2">
+                                                <IotHealthBadge status={row.alarm_state} />
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        ) : (
+                            <table className="w-full text-sm">
+                                <thead>
+                                    <tr className="border-b text-left text-muted-foreground">
+                                        <th className="px-4 py-2 font-medium">Time</th>
+                                        <th className="px-4 py-2 font-medium">Parameter</th>
+                                        <th className="px-4 py-2 font-medium">Value</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {(recentReadings as SensorReadingRow[]).map((row, index) => (
+                                        <tr key={index} className="border-b border-border/60">
+                                            <td className="px-4 py-2"><IotRelativeTime iso={row.read_at} /></td>
+                                            <td className="px-4 py-2">{formatHumanLabel(row.parameter)}</td>
+                                            <td className="px-4 py-2 tabular-nums">
+                                                {row.value} {row.unit}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        )}
+                    </ConceptTableCard>
+                ) : null}
 
                 {permissions.canManageTokens ? (
                     <IotModuleSection
@@ -197,12 +288,12 @@ export default function FieldDeviceShow({ site, deviceType, device, permissions 
     );
 }
 
-FieldDeviceShow.layout = (page: { props: Props }) => ({
+FieldDeviceShow.layout = (props: Props) => ({
     breadcrumbs: [
         { title: 'Field devices', href: fieldDevicesOverview() },
         {
-            title: page.props.device.name,
-            href: fieldDeviceShow({ type: page.props.deviceType, id: page.props.device.id }),
+            title: props.device.name,
+            href: fieldDeviceShow({ type: props.deviceType, id: props.device.id }),
         },
     ],
 });

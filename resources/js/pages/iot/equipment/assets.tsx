@@ -5,8 +5,12 @@ import { IotViewLink } from '@/components/iot/iot-module-layout';
 import {
     ConceptPageHeader,
     ConceptPageShell,
+    ConceptPagination,
     ConceptTableCard,
+    TimeRangeSelect,
+    type TimeRangeFilters,
 } from '@/components/concepts';
+import type { Paginator } from '@/types/pagination';
 import { EnumSelect, type EnumOption } from '@/components/siteguard/enum-select';
 import { IotHealthBadge, IotRelativeTime } from '@/components/iot/iot-ui';
 import InputError from '@/components/input-error';
@@ -33,22 +37,25 @@ import EquipmentController from '@/actions/App/Http/Controllers/EquipmentControl
 import { overview as equipmentOverview, show as equipmentShow } from '@/routes/iot/equipment';
 import { index as equipmentAssetsIndex } from '@/routes/iot/equipment/assets';
 
+type AssetRow = {
+    id: number;
+    equipment_id: string;
+    name: string;
+    equipment_type: string;
+    status: string;
+    inspections_count: number;
+    last_inspection_at: string | null;
+};
+
 type Props = {
     site: { id: number; name: string };
-    assets: {
-        id: number;
-        equipment_id: string;
-        name: string;
-        equipment_type: string;
-        status: string;
-        inspections_count: number;
-        last_inspection_at: string | null;
-    }[];
+    assets: Paginator<AssetRow>;
+    filters: TimeRangeFilters;
     permissions: { canManage: boolean };
     equipmentTypeOptions: EnumOption[];
 };
 
-export default function EquipmentAssets({ site, assets, permissions, equipmentTypeOptions }: Props) {
+export default function EquipmentAssets({ site, assets, filters, permissions, equipmentTypeOptions }: Props) {
     const { selectedSite } = useSiteContext();
     const siteName = selectedSite?.name ?? site.name;
     const [open, setOpen] = useState(false);
@@ -59,8 +66,9 @@ export default function EquipmentAssets({ site, assets, permissions, equipmentTy
             <ConceptPageShell>
                 <ConceptPageHeader
                     title="Equipment assets"
-                    description={`QR-labelled plant and vehicles for ${siteName}`}
+                    description={`${assets.total.toLocaleString()} assets in ${filters.label.toLowerCase()} — ${siteName}`}
                 >
+                    <TimeRangeSelect filters={filters} />
                     {permissions.canManage ? (
                         <Dialog open={open} onOpenChange={setOpen}>
                             <DialogTrigger asChild>
@@ -113,7 +121,7 @@ export default function EquipmentAssets({ site, assets, permissions, equipmentTy
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {assets.map((a) => (
+                            {assets.data.map((a) => (
                                 <TableRow key={a.id}>
                                     <TableCell className="font-mono text-xs">{a.equipment_id}</TableCell>
                                     <TableCell>{a.name}</TableCell>
@@ -130,6 +138,9 @@ export default function EquipmentAssets({ site, assets, permissions, equipmentTy
                             ))}
                         </TableBody>
                     </Table>
+                    <div className="px-4 pb-4">
+                        <ConceptPagination links={assets.links} />
+                    </div>
                 </ConceptTableCard>
             </ConceptPageShell>
         </>

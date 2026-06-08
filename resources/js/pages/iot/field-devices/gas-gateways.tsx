@@ -10,7 +10,10 @@ import { IotViewLink } from '@/components/iot/iot-module-layout';
 import {
     ConceptPageHeader,
     ConceptPageShell,
+    TimeRangeSelect,
+    type TimeRangeFilters,
 } from '@/components/concepts';
+import type { Paginator } from '@/types/pagination';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import {
@@ -31,7 +34,8 @@ import { IotHealthBadge, IotRelativeTime } from '@/components/iot/iot-ui';
 
 type Props = {
     site: { id: number; name: string };
-    devices: DeviceRow[];
+    devices: Paginator<DeviceRow>;
+    filters: TimeRangeFilters;
     edgeOptions: { id: number; name: string; code: string }[];
     ingestTokenPlain: string | null;
     permissions: { canManage: boolean; canManageTokens: boolean };
@@ -40,6 +44,7 @@ type Props = {
 export default function FieldDevicesGasGateways({
     site,
     devices,
+    filters,
     edgeOptions,
     ingestTokenPlain,
     permissions,
@@ -54,8 +59,10 @@ export default function FieldDevicesGasGateways({
             <ConceptPageShell>
                 <ConceptPageHeader
                     title="Gas gateways"
-                    description={`Vehicle-mounted gas concentrators for ${siteName}`}
-                />
+                    description={`${devices.total.toLocaleString()} gateways in ${filters.label.toLowerCase()} — ${siteName}`}
+                >
+                    <TimeRangeSelect filters={filters} />
+                </ConceptPageHeader>
 
                 {ingestTokenPlain ? (
                     <div className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4">

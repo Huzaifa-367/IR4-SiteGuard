@@ -1,5 +1,10 @@
 import { Head, Link } from '@inertiajs/react';
-import { ConceptPageHeader, ConceptPageShell, ConceptTableCard } from '@/components/concepts';
+import {
+    ConceptPageHeader,
+    ConceptPageShell,
+    ConceptPagination,
+    ConceptTableCard,
+} from '@/components/concepts';
 import {
     Table,
     TableBody,
@@ -8,24 +13,36 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import { IotTimeRangeSelect, type IotTimeRangeFilters } from '@/components/iot/iot-time-range-select';
 import { IotHealthBadge, IotRelativeTime } from '@/components/iot/iot-ui';
 import { useSiteContext } from '@/hooks/use-site-context';
 import { overview as hseOverview, show as hseShow } from '@/routes/iot/hse-incidents';
 import { index as hseRegisterIndex } from '@/routes/iot/hse-incidents/register';
 
-type Props = {
-    site: { id: number; name: string };
-    incidents: {
-        id: number;
-        incident_number: string;
-        status: string;
-        severity: string | null;
-        incident_type: string | null;
-        occurred_at: string;
-    }[];
+type IncidentRow = {
+    id: number;
+    incident_number: string;
+    status: string;
+    severity: string | null;
+    incident_type: string | null;
+    occurred_at: string;
 };
 
-export default function HseIncidentsRegister({ site, incidents }: Props) {
+type Paginator<T> = {
+    data: T[];
+    current_page: number;
+    last_page: number;
+    total: number;
+    links: { url: string | null; label: string; active: boolean }[];
+};
+
+type Props = {
+    site: { id: number; name: string };
+    incidents: Paginator<IncidentRow>;
+    filters: IotTimeRangeFilters;
+};
+
+export default function HseIncidentsRegister({ site, incidents, filters }: Props) {
     const { selectedSite } = useSiteContext();
     const siteName = selectedSite?.name ?? site.name;
 
@@ -35,13 +52,17 @@ export default function HseIncidentsRegister({ site, incidents }: Props) {
             <ConceptPageShell>
                 <ConceptPageHeader
                     title="Incident register"
-                    description={`Formal HSE incident classification for ${siteName}`}
-                />
+                    description={`${incidents.total.toLocaleString()} incidents in ${filters.label.toLowerCase()} — ${siteName}`}
+                >
+                    <IotTimeRangeSelect filters={filters} />
+                </ConceptPageHeader>
 
                 <ConceptTableCard>
                     <div className="border-b px-4 py-3">
                         <h2 className="text-sm font-semibold">Incident register</h2>
-                        <p className="text-xs text-muted-foreground">{incidents.length} recent incidents</p>
+                        <p className="text-xs text-muted-foreground">
+                            Page {incidents.current_page} of {incidents.last_page}
+                        </p>
                     </div>
                     <Table className="text-sm">
                         <TableHeader>
@@ -55,7 +76,7 @@ export default function HseIncidentsRegister({ site, incidents }: Props) {
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {incidents.map((incident) => (
+                            {incidents.data.map((incident) => (
                                 <TableRow key={incident.id}>
                                     <TableCell className="font-mono text-xs">
                                         {incident.incident_number}
@@ -80,6 +101,9 @@ export default function HseIncidentsRegister({ site, incidents }: Props) {
                             ))}
                         </TableBody>
                     </Table>
+                    <div className="px-4 pb-4">
+                        <ConceptPagination links={incidents.links} />
+                    </div>
                 </ConceptTableCard>
             </ConceptPageShell>
         </>
@@ -89,6 +113,6 @@ export default function HseIncidentsRegister({ site, incidents }: Props) {
 HseIncidentsRegister.layout = () => ({
     breadcrumbs: [
         { title: 'HSE incidents', href: hseOverview() },
-        { title: 'Incident register', href: hseRegisterIndex() },
+        { title: 'Register', href: hseRegisterIndex() },
     ],
 });

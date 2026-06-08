@@ -1,7 +1,8 @@
 import { Form } from '@inertiajs/react';
 import { KeyRound } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { ConceptTableCard } from '@/components/concepts';
+import { ConceptPagination, ConceptTableCard } from '@/components/concepts';
+import type { Paginator } from '@/types/pagination';
 import { Button } from '@/components/ui/button';
 import {
     Table,
@@ -76,7 +77,7 @@ export function DeviceTableSection({
 }: {
     title: string;
     description: string;
-    devices: DeviceRow[];
+    devices: Paginator<DeviceRow>;
     addDialog?: ReactNode;
     columns: string[];
     renderRow: (device: DeviceRow) => ReactNode;
@@ -86,27 +87,35 @@ export function DeviceTableSection({
             <div className="flex items-start justify-between gap-4 border-b p-4">
                 <div>
                     <h2 className="font-semibold">{title}</h2>
-                    <p className="text-sm text-muted-foreground">{description}</p>
+                    <p className="text-sm text-muted-foreground">
+                        {description}
+                        {devices.total > 0 ? ` · ${devices.total.toLocaleString()} total` : ''}
+                    </p>
                 </div>
                 {addDialog}
             </div>
-            {devices.length === 0 ? (
+            {devices.data.length === 0 ? (
                 <p className="p-4 text-sm text-muted-foreground">No devices registered yet.</p>
             ) : (
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            {columns.map((col) => (
-                                <TableHead key={col}>{col}</TableHead>
+                <>
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                {columns.map((col) => (
+                                    <TableHead key={col}>{col}</TableHead>
+                                ))}
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {devices.data.map((d) => (
+                                <TableRow key={d.id}>{renderRow(d)}</TableRow>
                             ))}
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {devices.map((d) => (
-                            <TableRow key={d.id}>{renderRow(d)}</TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
+                        </TableBody>
+                    </Table>
+                    <div className="px-4 pb-4">
+                        <ConceptPagination links={devices.links} />
+                    </div>
+                </>
             )}
         </ConceptTableCard>
     );

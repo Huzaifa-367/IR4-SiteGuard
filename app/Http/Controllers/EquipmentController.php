@@ -11,6 +11,7 @@ use App\Models\EquipmentAsset;
 use App\Models\EquipmentDocument;
 use App\Models\User;
 use App\Services\Reports\UdpmWeeklyReportService;
+use App\Support\Iot\IotTimeRange;
 use App\Support\IotAnalytics;
 use App\Support\SiteGuardEnums;
 use Illuminate\Http\RedirectResponse;
@@ -36,7 +37,12 @@ class EquipmentController extends Controller implements HasMiddleware
     public function overview(Request $request, IotAnalytics $iotAnalytics): Response
     {
         $site = $this->selectedSite($request);
-        $assets = EquipmentAsset::query()->where('site_id', $site->id)->get();
+        $selectedDays = IotTimeRange::chartDaysFromRequest($request);
+        $chartDays = IotTimeRange::effectiveChartDays($selectedDays);
+
+        $assetQuery = EquipmentAsset::query()->where('site_id', $site->id);
+        IotTimeRange::applySince($assetQuery, 'registered_at', $selectedDays);
+        $assets = $assetQuery->get();
 
         return Inertia::render('iot/equipment/overview', [
             'site' => ['id' => $site->id, 'name' => $site->name],
@@ -46,7 +52,8 @@ class EquipmentController extends Controller implements HasMiddleware
                 'vehicles' => $assets->where('equipment_type', 'vehicle')->count(),
                 'out_of_service' => $assets->where('status', 'out_of_service')->count(),
             ],
-            'analytics' => $iotAnalytics->equipmentPageAnalytics($site->id),
+            'analytics' => $iotAnalytics->equipmentPageAnalytics($site->id, $chartDays, $selectedDays),
+            'filters' => IotTimeRange::chartFilters($request),
         ]);
     }
 
@@ -54,16 +61,20 @@ class EquipmentController extends Controller implements HasMiddleware
     {
         $site = $this->selectedSite($request);
 
-        $assets = EquipmentAsset::query()
+        $listDays = IotTimeRange::listDaysFromRequest($request);
+
+        $assetQuery = EquipmentAsset::query()
             ->where('site_id', $site->id)
             ->withCount(['inspections', 'maintenanceRecords'])
             ->withMax('inspections', 'inspected_at')
-            ->orderBy('equipment_id')
-            ->get();
+            ->orderBy('equipment_id');
 
-        return Inertia::render('iot/equipment/assets', [
-            'site' => ['id' => $site->id, 'name' => $site->name],
-            'assets' => $assets->map(fn (EquipmentAsset $asset): array => [
+        IotTimeRange::applySince($assetQuery, 'registered_at', $listDays);
+
+        $assets = $assetQuery
+            ->paginate(IotTimeRange::perPage())
+            ->withQueryString()
+            ->through(fn (EquipmentAsset $asset): array => [
                 'id' => $asset->id,
                 'equipment_id' => $asset->equipment_id,
                 'name' => $asset->name,
@@ -75,7 +86,12 @@ class EquipmentController extends Controller implements HasMiddleware
                 'inspections_count' => $asset->inspections_count,
                 'maintenance_count' => $asset->maintenance_records_count,
                 'last_inspection_at' => $asset->inspections_max_inspected_at,
-            ]),
+            ]);
+
+        return Inertia::render('iot/equipment/assets', [
+            'site' => ['id' => $site->id, 'name' => $site->name],
+            'assets' => $assets,
+            'filters' => IotTimeRange::listFilters($request),
             'permissions' => [
                 'canManage' => $request->user()?->can('equipment.manage') ?? false,
             ],

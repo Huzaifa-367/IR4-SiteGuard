@@ -21,12 +21,19 @@ import {
     type ZoneOccupancyRow,
 } from '@/components/iot/iot-charts';
 import { IotModuleSection } from '@/components/iot/iot-module-layout';
+import {
+    IotTimeRangeSelect,
+    iotChartRangeLabel,
+    type IotTimeRangeFilters,
+} from '@/components/iot/iot-time-range-select';
 
 type Props = {
     site: { id: number; name: string };
     onSiteCount: number;
     permissions: { canEvacuate: boolean };
+    filters: IotTimeRangeFilters;
     analytics: {
+        chartDays: number;
         gateFlow: GateFlowData;
         gateFlowHourly: GateFlowData;
         zoneOccupancy: ZoneOccupancyRow[];
@@ -39,12 +46,14 @@ type Props = {
             portable_pending: number;
         };
         zoneMapPins: ZoneMapPin[];
+        siteMapCenter: { lat: number; lng: number } | null;
     };
 };
 
-export default function RfidOverview({ site, onSiteCount, permissions, analytics }: Props) {
+export default function RfidOverview({ site, onSiteCount, permissions, filters, analytics }: Props) {
     const { selectedSite } = useSiteContext();
     const siteName = selectedSite?.name ?? site.name;
+    const rangeLabel = iotChartRangeLabel(analytics.chartDays, filters.days);
 
     return (
         <>
@@ -54,6 +63,7 @@ export default function RfidOverview({ site, onSiteCount, permissions, analytics
                     title="RFID / SSMS"
                     description={`Personnel tracking, gate operations, and evacuation for ${siteName} (IR4 §8.3)`}
                 >
+                    <IotTimeRangeSelect filters={filters} />
                     {permissions.canEvacuate ? (
                         <Form {...RfidOperationsController.generateEvacuation.form()}>
                             {({ processing }) => (
@@ -81,20 +91,26 @@ export default function RfidOverview({ site, onSiteCount, permissions, analytics
                 />
 
                 <div className="mt-4 space-y-4">
-                    <IotModuleSection title="Gate & zone analytics" description="Entry/exit flow and occupancy distribution">
+                    <IotModuleSection title="Gate & zone analytics" description={`Entry/exit flow and occupancy — ${rangeLabel}`}>
                         <div className="grid gap-3 lg:grid-cols-2">
-                            <GateFlowChart data={analytics.gateFlow} />
+                            <GateFlowChart data={analytics.gateFlow} title={`Gate flow — ${rangeLabel}`} />
                             <GateFlowHourlyChart data={analytics.gateFlowHourly} />
                         </div>
                         <div className="mt-3 grid gap-3 lg:grid-cols-2">
                             <ZoneOccupancyChart data={analytics.zoneOccupancy} />
-                            <ContractorBreakdownChart data={analytics.contractorBreakdown} />
+                            <ContractorBreakdownChart
+                                data={analytics.contractorBreakdown}
+                                title={`Gate entries by contractor — ${rangeLabel}`}
+                            />
                         </div>
                     </IotModuleSection>
                     <IotModuleSection title="Zone utilization map" description="Spatial view of reader coverage">
                         <ZoneUtilizationPanel data={analytics.zoneOccupancy} />
                         <div className="mt-3">
-                            <ZonePositionMap zones={analytics.zoneMapPins} />
+                            <ZonePositionMap
+                                zones={analytics.zoneMapPins}
+                                mapCenter={analytics.siteMapCenter}
+                            />
                         </div>
                     </IotModuleSection>
                 </div>

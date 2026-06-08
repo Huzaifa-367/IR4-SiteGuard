@@ -6,6 +6,7 @@ use App\Http\Requests\StoreUserRequest;
 use App\Http\Requests\UpdateUserRequest;
 use App\Models\Site;
 use App\Models\User;
+use App\Support\Iot\IotTimeRange;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
@@ -29,7 +30,7 @@ class UserManagementController extends Controller implements HasMiddleware
         $users = User::query()
             ->with(['roles:id,name', 'sites:id,name'])
             ->orderBy('name')
-            ->paginate(20)
+            ->paginate(IotTimeRange::perPage())
             ->withQueryString()
             ->through(fn (User $user): array => [
                 'id' => $user->id,

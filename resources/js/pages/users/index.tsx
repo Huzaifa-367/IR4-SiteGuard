@@ -1,7 +1,13 @@
 import { Head } from '@inertiajs/react';
 import { Pencil, Plus } from 'lucide-react';
 import { useState } from 'react';
-import { ConceptPageHeader, ConceptPageShell, ConceptTableCard } from '@/components/concepts';
+import {
+    ConceptPageHeader,
+    ConceptPageShell,
+    ConceptPagination,
+    ConceptTableCard,
+} from '@/components/concepts';
+import type { Paginator } from '@/types/pagination';
 import { ConceptStatusBadge } from '@/components/concepts/concept-status-badge';
 import UserFormDialog, { type UserFormValues } from '@/components/siteguard/user-form-dialog';
 import { Button } from '@/components/ui/button';
@@ -17,13 +23,8 @@ import { index as usersIndex } from '@/routes/users';
 
 type UserRow = UserFormValues;
 
-type PaginatedUsers = {
-    data: UserRow[];
-    links: { url: string | null; label: string; active: boolean }[];
-};
-
 type Props = {
-    users: PaginatedUsers;
+    users: Paginator<UserRow>;
     sites: { id: number; name: string }[];
     roles: { id: number; name: string }[];
     canManage: boolean;
@@ -102,6 +103,9 @@ export default function UsersIndex({ users, sites, roles, canManage }: Props) {
                             ))}
                         </TableBody>
                     </Table>
+                    <div className="px-4 pb-4">
+                        <ConceptPagination links={users.links} />
+                    </div>
                 </ConceptTableCard>
             </ConceptPageShell>
             {canManage ? (

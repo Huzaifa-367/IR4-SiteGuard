@@ -102,12 +102,12 @@ export default function DeploymentApprovalShow({
     );
 }
 
-DeploymentApprovalShow.layout = (page: { props: Props }) => ({
+DeploymentApprovalShow.layout = (props: Props) => ({
     breadcrumbs: [
         { title: 'Deployment approvals', href: deploymentApprovalsIndex() },
         {
-            title: page.props.approval.approval_type_label,
-            href: deploymentApprovalShow(page.props.approval.id),
+            title: props.approval.approval_type_label,
+            href: deploymentApprovalShow(props.approval.id),
         },
     ],
 });

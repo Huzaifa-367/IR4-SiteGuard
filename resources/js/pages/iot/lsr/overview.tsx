@@ -16,11 +16,17 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import {
+    IotTimeRangeSelect,
+    iotChartRangeLabel,
+    type IotTimeRangeFilters,
+} from '@/components/iot/iot-time-range-select';
 import { useSiteContext } from '@/hooks/use-site-context';
 import { overview as lsrOverview } from '@/routes/iot/lsr';
 
 type Props = {
     site: { id: number; name: string };
+    filters: IotTimeRangeFilters;
     summary: {
         total: number;
         automated: number;
@@ -31,12 +37,14 @@ type Props = {
     automatedCategories: { code: string; name: string; method: string }[];
     analytics: {
         timeline: TimelineCountData;
+        chartDays: number;
     };
 };
 
-export default function LsrOverview({ site, summary, categoryBreakdown, automatedCategories, analytics }: Props) {
+export default function LsrOverview({ site, summary, categoryBreakdown, automatedCategories, analytics, filters }: Props) {
     const { selectedSite } = useSiteContext();
     const siteName = selectedSite?.name ?? site.name;
+    const rangeLabel = iotChartRangeLabel(analytics.chartDays, filters.days);
 
     return (
         <>
@@ -45,13 +53,15 @@ export default function LsrOverview({ site, summary, categoryBreakdown, automate
                 <ConceptPageHeader
                     title="Life Saving Rules"
                     description={`Automated camera/RFID detection and manual permit workflows for ${siteName} (IR4 §8.6)`}
-                />
+                >
+                    <IotTimeRangeSelect filters={filters} />
+                </ConceptPageHeader>
 
                 <IotKpiStrip
                     kpis={[
-                        { key: 'total', label: 'Total logs', value: summary.total, hint: 'All LSR violations' },
-                        { key: 'auto', label: 'Automated', value: summary.automated, hint: 'Camera / RFID / gas' },
-                        { key: 'manual', label: 'Manual', value: summary.manual, hint: 'Permit workflows' },
+                        { key: 'total', label: 'Total logs', value: summary.total, hint: rangeLabel },
+                        { key: 'auto', label: 'Automated', value: summary.automated, hint: `Camera / RFID / gas · ${rangeLabel}` },
+                        { key: 'manual', label: 'Manual', value: summary.manual, hint: `Permit workflows · ${rangeLabel}` },
                         {
                             key: 'actions',
                             label: 'Missing actions',
@@ -73,8 +83,8 @@ export default function LsrOverview({ site, summary, categoryBreakdown, automate
                             />
                             <DailyCountChart
                                 data={analytics.timeline}
-                                title="Violations — 14 days"
-                                description="Daily LSR event volume"
+                                title={`Violations — ${rangeLabel}`}
+                                description="LSR event volume over selected period"
                                 color="#EF4444"
                             />
                         </div>
