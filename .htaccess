@@ -1,0 +1,50 @@
+# =============================================================================
+# Laravel project root — use when the vhost DocumentRoot points here.
+# Production: set DocumentRoot to /path/to/project/public instead; then this
+# file is never served and is defense-in-depth only.
+# =============================================================================
+
+<IfModule mod_authz_core.c>
+    # Sensitive filenames at repository root (not rewritten yet).
+    <FilesMatch "(?i)\.(sql|sqlite3?|dump|bak|backup|old|gz|tgz|bz2|pem|key|crt|p12|pfx|log|phar)$">
+        Require all denied
+    </FilesMatch>
+    <FilesMatch "(?i)^(\.env|\.env\.|\.gitignore|\.gitattributes|\.editorconfig)$">
+        Require all denied
+    </FilesMatch>
+</IfModule>
+
+<IfModule mod_rewrite.c>
+    Options -Indexes +FollowSymLinks
+    RewriteEngine On
+
+    # HTTP-01 ACME / other well-known data — keep under public/.well-known/
+    RewriteRule ^\.well-known/ - [L]
+
+    # Forbidden: source, dependencies, VCS, and tooling (never web-facing).
+    RewriteRule ^\.git(?:/|$) - [F,L]
+    RewriteRule ^\.github(?:/|$) - [F,L]
+    RewriteRule ^\.cursor(?:/|$) - [F,L]
+    RewriteRule ^\.idea(?:/|$) - [F,L]
+    RewriteRule ^artisan$ - [F,L]
+    RewriteRule ^composer\.(json|lock)$ - [F,L]
+    RewriteRule ^package(-lock)?\.json$ - [F,L]
+    RewriteRule ^pnpm-lock\.yaml$ - [F,L]
+    RewriteRule ^yarn\.lock$ - [F,L]
+    RewriteRule ^phpunit\.xml(\.dist)?$ - [F,L]
+    RewriteRule ^\.phpunit\.result\.cache$ - [F,L]
+    RewriteRule ^node_modules(?:/|$) - [F,L]
+    RewriteRule ^vendor(?:/|$) - [F,L]
+    RewriteRule ^app(?:/|$) - [F,L]
+    RewriteRule ^bootstrap(?:/|$) - [F,L]
+    RewriteRule ^config(?:/|$) - [F,L]
+    RewriteRule ^database(?:/|$) - [F,L]
+    RewriteRule ^resources(?:/|$) - [F,L]
+    RewriteRule ^routes(?:/|$) - [F,L]
+    RewriteRule ^tests(?:/|$) - [F,L]
+
+    # Do not block ^storage/ — URLs like /storage/* must map to public/storage (symlink).
+
+    # Only expose the web root; URLs stay clean (no /public/ prefix).
+    RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>

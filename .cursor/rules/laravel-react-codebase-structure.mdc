@@ -1,0 +1,166 @@
+---
+alwaysApply: true
+---
+# Laravel–React codebase structure (detailed)
+
+When adding or changing code, **mirror an existing file in the same folder** (same naming style, same layering). Do not introduce parallel patterns (new global state libraries, new API layers, or ad hoc URL builders) unless the repo already uses them.
+
+---
+
+## Stack at a glance
+
+- **Backend**: Laravel 11+ style `bootstrap/app.php` routing registration; **Fortify** for auth views and flows; **spatie/laravel-permission** (see migrations/seeders).
+- **Frontend**: **Inertia.js + React 19** (`resources/js/app.tsx` entry), **Vite** (`vite.config.ts`: Laravel plugin, Inertia, React + React Compiler, Tailwind v4, **Wayfinder** with `formVariants: true`).
+- **UI**: Tailwind + **shadcn/ui**-style primitives (`components.json` at repo root; components live under `resources/js/components/ui/`).
+
+---
+
+## Backend directory map
+
+| Location | Purpose |
+|----------|---------|
+| `routes/web.php` | Public and authenticated **Inertia pages** (`Route::inertia`), home route, dashboard; `require` feature route files. |
+| `routes/settings.php` | Settings area: profile, security, password, appearance; extend here for more `/settings/...` routes. |
+| `routes/console.php` | Artisan-only routes. |
+| `bootstrap/app.php` | App bootstrap: **web** middleware stack append: `HandleAppearance`, `HandleInertiaRequests`, `AddLinkHeadersForPreloadedAssets`. Cookie exceptions: `appearance`, `sidebar_state`. |
+| `app/Http/Controllers/` | Thin controllers; **subfolders by area** (e.g. `Settings/`). |
+| `app/Http/Requests/{Area}/` | **Form requests** for validation and authorization (`authorize()`, `rules()`). Name like the action: `ProfileUpdateRequest`, `StoreRoleRequest`. |
+| `app/Http/Middleware/` | `HandleInertiaRequests` (shared Inertia props), `HandleAppearance` (theme cookie). |
+| `app/Actions/Fortify/` | Fortify contracts: `CreateNewUser`, `ResetUserPassword`, etc. |
+| `app/Concerns/` | Reusable validation rule helpers (e.g. `PasswordValidationRules`, `ProfileValidationRules`) consumed by requests or actions. |
+| `app/Support/` | **Static or stateless helpers** that are not models or HTTP (e.g. `PermissionRegistry` for canonical permission names). Prefer small, focused classes. |
+| `app/Models/` | Eloquent models; use traits from Spatie permission on `User` / `Role` as already configured. |
+| `app/Providers/` | `AppServiceProvider`, `FortifyServiceProvider` (Fortify views → `Inertia::render(...)`, actions, rate limiting). |
+| `config/` | Framework and package config; prefer `config()` and `.env` over literals in app code. |
+
+---
+
+## HTTP routes and middleware
+
+- Register new **web** routes in `routes/web.php` or split files (like `settings.php`) and `require` them from `web.php` to avoid a single giant file.
+- **Route names**: use Laravel’s named routes (`->name('profile.edit')`); the frontend consumes them via **Wayfinder** (`@/routes/...`), not hardcoded paths.
+- **Middleware groups**: `auth` vs `auth, verified` — follow existing splits in `settings.php` (e.g. profile edit/update under `auth`; destroy and security under `auth, verified` where that pattern already exists).
+- **Throttling**: sensitive routes (e.g. password update) use `->middleware('throttle:...')` like existing examples.
+
+---
+
+## Controllers and Inertia responses
+
+- Controllers extend `App\Http\Controllers\Controller` and use explicit return types: `Inertia\Response`, `RedirectResponse`, etc.
+- **GET pages**: `return Inertia::render('path/from/pages', [...])` where the first argument matches the filesystem under `resources/js/pages/` (e.g. `'settings/profile'` → `pages/settings/profile.tsx`).
+- **Mutating actions**: type-hint a **Form Request**; use `$request->validated()`; persist on the model; then **redirect back** with `to_route(...)` or `redirect(...)` as neighboring actions do.
+- **Flash toasts**: use `Inertia::flash('toast', ['type' => 'success', 'message' => __('...')])` (see `ProfileController@update`). Shapes should align with **`FlashToast`** in `resources/js/types/ui.ts` and `useFlashToast` (Sonner).
+
+---
+
+## Form requests
+
+- Path: `app/Http/Requests/{Area}/{Name}Request.php` (e.g. `Settings/ProfileUpdateRequest.php`).
+- Keep **validation and auth checks** in the request; keep controllers **thin** (orchestration only).
+- Reuse `app/Concerns/*` for shared password/profile rules instead of duplicating rule arrays.
+
+---
+
+## Fortify
+
+- **Views** are registered in `FortifyServiceProvider::configureViews()` with `Inertia::render('auth/...', [...])` — new auth screens belong under `resources/js/pages/auth/` and are wired here.
+- **Actions** are bound in `configureActions()` (`Fortify::createUsersUsing`, `Fortify::resetUserPasswordsUsing`, …) pointing at `app/Actions/Fortify/`.
+- Feature flags: use `Laravel\Fortify\Features` in routes/providers/tests (`Features::enabled(Features::registration())`, etc.). Tests use `TestCase::skipUnlessFortifyHas(...)` when a feature is optional.
+
+---
+
+## Database
+
+- **Migrations**: `database/migrations/`; timestamp + descriptive name; keep permission-related changes consistent with `spatie/laravel-permission` table names.
+- **Seeders**: `database/seeders/`; `DatabaseSeeder` calls sub-seeders (e.g. `RolePermissionSeeder`); idempotent patterns for local/dev.
+- **Factories**: `database/factories/`; align factory states with any new model fields or roles used in tests.
+
+---
+
+## Frontend directory map
+
+| Location | Purpose |
+|----------|---------|
+| `resources/js/app.tsx` | `createInertiaApp`: default layout resolver — `welcome` → no layout; `auth/*` → `AuthLayout`; `settings/*` → `[AppLayout, SettingsLayout]`; else `AppLayout`. **New top-level areas** that need a dedicated shell extend this `switch`, not each page individually. |
+| `resources/js/pages/` | **Inertia page components**; path segments mirror the string passed to `Inertia::render` / `Route::inertia`. **Kebab-case** filenames (`login.tsx`, `two-factor-challenge.tsx`). |
+| `resources/js/layouts/` | App shell (`app-layout.tsx`), auth wrapper (`auth-layout.tsx`), settings chrome (`settings/layout.tsx`), plus `layouts/app/*` and `layouts/auth/*` variants. |
+| `resources/js/components/` | Feature/app components (kebab-case). Not generic primitives. |
+| `resources/js/components/ui/` | shadcn-style primitives; add via CLI / `components.json` conventions — do not hand-copy unrelated design systems. |
+| `resources/js/hooks/` | `use-*` hooks only; colocate domain (e.g. `use-flash-toast.ts`, `use-appearance.tsx`). |
+| `resources/js/lib/` | Small utilities (`utils.ts` with `cn`, etc.). |
+| `resources/js/types/` | TypeScript types; **`index.ts` re-exports** modules (`export type * from './auth'`). Shared Inertia props extended in `types/global.d.ts` (see below). |
+
+---
+
+## Imports and aliases
+
+- **`@/*`** maps to `./resources/js/*` (`tsconfig.json`). Always use `@/components/...`, `@/routes/...`, not long relative paths across folders.
+
+---
+
+## Wayfinder: routes and forms
+
+- **URLs**: import from `@/routes` or nested modules (`@/routes/profile`, `@/routes/login`, etc.) and call the generated functions (`edit()`, `store()`, …).
+- **Forms**: use Inertia `<Form>` with spread **generated controller form props**, e.g. `import ProfileController from '@/actions/App/Http/Controllers/Settings/ProfileController'` then `{...ProfileController.update.form()}`. Do not manually set `action`/`method` when a Wayfinder form helper exists for that controller method.
+- After changing PHP routes or controller signatures, run **`npm run dev`** or **`npm run build`** so Wayfinder regenerates `resources/js/routes` and `resources/js/actions`.
+
+---
+
+## Inertia pages: UI and data
+
+- Use `<Head title="..." />` for document titles.
+- **Props**: type the page component’s props explicitly (see `settings/profile.tsx`). Use `usePage()` for shared props like `auth` when needed.
+- **Accessibility**: settings pages use patterns like `<h1 className="sr-only">` plus visible `Heading` — keep that consistency for new settings screens.
+- **Settings nav**: new settings sections need a `NavItem` entry in `layouts/settings/layout.tsx` (title, `href` from Wayfinder, optional icon).
+
+---
+
+## Shared Inertia props and TypeScript
+
+- **PHP**: `HandleInertiaRequests::share()` defines default props (`name`, `auth`, `sidebarOpen`). Add new shared keys there only when truly global.
+- **TS**: extend `declare module '@inertiajs/core' { interface InertiaConfig { sharedPageProps: { ... } } }` in `resources/js/types/global.d.ts` whenever you add shared props so `usePage()` stays typed.
+
+---
+
+## Styling
+
+- Tailwind utility-first; reuse **sidebar / card / border** class patterns from existing dashboard and settings pages for visual consistency.
+- Prefer existing `Button`, `Input`, `Label`, `InputError`, `Card` patterns over raw HTML for forms.
+
+---
+
+## Tests
+
+- **Feature**: `tests/Feature/` grouped by domain (`Auth/`, `Settings/`, …); use route names and HTTP helpers consistent with existing tests.
+- **Base**: `tests/TestCase.php` adds Fortify-aware skips — use `skipUnlessFortifyHas` when a test depends on an optional Fortify feature.
+- **Unit**: `tests/Unit/` for isolated logic (keep thin; prefer feature tests for HTTP flows).
+
+---
+
+## Tooling (do not fight the repo)
+
+- **PHP**: Laravel Pint / Composer scripts as defined in `composer.json`.
+- **JS**: ESLint + Prettier (project configs); respect existing formatting.
+- **Vite entry**: `resources/js/app.tsx` and `resources/css/app.css` — new global CSS rarely needed; prefer Tailwind.
+
+---
+
+## Anti-patterns (avoid)
+
+- Raw string URLs for app routes when Wayfinder exports exist.
+- Validation arrays **only** in controllers when the rest of the codebase uses Form Requests for that flow.
+- New React global providers **outside** `app.tsx` unless there is an established precedent.
+- Editing **generated** Wayfinder output under `resources/js/routes` or `resources/js/actions` by hand — fix PHP side and regenerate.
+- New top-level PHP namespaces like `app/Services/` **without** mirroring an existing convention in this repo (currently favors Controllers + Requests + Actions + Support).
+
+---
+
+## Quick checklist for a new “settings” feature
+
+1. Routes + names in `routes/settings.php` (or appropriate file), correct middleware.
+2. Controller in `app/Http/Controllers/Settings/`.
+3. Form requests in `app/Http/Requests/Settings/`.
+4. Page in `resources/js/pages/settings/<name>.tsx` matching `Inertia::render` path.
+5. Wayfinder imports for links/forms; run Vite so actions/routes regenerate.
+6. Optional: sidebar link in `layouts/settings/layout.tsx`.
+7. Feature tests under `tests/Feature/Settings/`.
